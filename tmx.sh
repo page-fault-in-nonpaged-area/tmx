@@ -15,7 +15,7 @@ Workspaces 1-3 belong to the left; 4-6 belong to the right.
 Ctrl-p            next existing workspace in focused side, wrapping around
 Ctrl-b then 1-6    create/select an exact workspace on its assigned side
 Ctrl-o            next pane, wrapping from right to left
-Ctrl-i / Ctrl-k   scroll up / down (Ctrl-i needs extended input; hold to accelerate)
+Ctrl-u / Ctrl-k   scroll up / down (hold 2 seconds to accelerate)
 Ctrl-q            send Shift+Left in Codex; ordinary Ctrl-q elsewhere
 Ctrl-b then t      send a literal Tab to the application
 Ctrl-b then o      switch between left and right panes
