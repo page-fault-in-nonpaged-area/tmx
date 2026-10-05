@@ -20,17 +20,30 @@ class WeatherTests(unittest.TestCase):
         self.config_patch.start()
         self.addCleanup(self.config_patch.stop)
 
-    def test_format_and_all_states_have_four_capitals(self):
+    def test_emoji_format_preserves_numbers_and_uv_colors(self):
         self.assertEqual(weather.render(self.data),
-                         "#[fg=colour220]SUNY#[fg=white] 24° "
+                         "#[fg=colour220]☀️#[fg=white] 24° "
                          "#[fg=colour141]UV#[fg=white] 5")
         for state in weather.COLORS:
             self.assertRegex(state, r"^[A-Z]{4}$")
-        self.assertIn("colour39]RAIN", weather.render(weather.reading("RAIN", -2, 0)))
+            self.assertIn(weather.ICONS[state], weather.render(weather.reading(state, 24, 5)))
+        self.assertIn("colour39]🌧️", weather.render(weather.reading("RAIN", -2, 0)))
         self.assertEqual(weather.render(None), "")
         for value in (None, "NaN", "#[fg=red]", True, float("inf"), 1000):
             with self.subTest(value=value), self.assertRaises((ValueError, TypeError)):
                 weather.reading("SUNY", value, 5)
+
+    def test_existing_cached_reading_renders_emoji_without_provider_request(self):
+        weather.save(self.cache, self.config, self.data, 100)
+        before = self.cache.read_bytes()
+        with patch.object(weather, "fetch_weather") as fetch:
+            output = []
+            weather.cycle(self.cache, output.append, now=101)
+            fetch.assert_not_called()
+        self.assertEqual(self.cache.read_bytes(), before)
+        self.assertEqual(output, [weather.render(self.data)])
+        self.assertIn("☀️", output[0])
+        self.assertNotIn("SUNY", output[0])
 
     def test_wttr_parses_only_valid_data(self):
         record = {"current_condition": [{"weatherCode": "113", "temp_C": "24",

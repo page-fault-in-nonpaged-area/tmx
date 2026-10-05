@@ -321,7 +321,7 @@ class TmxTests(unittest.TestCase):
         self.mux("select-pane", "-t", "=tmx:1.1")
         self.mux("set-option", "-g", "@tmx_storage", "#[fg=white]sda: 78%")
         self.mux("set-option", "-g", "@tmx_weather",
-                 "#[fg=colour220]SUNY#[fg=white] 24° #[fg=colour141]UV#[fg=white] 5")
+                 "#[fg=colour220]☀️#[fg=white] 24° #[fg=colour141]UV#[fg=white] 5")
         # An outer isolated tmux acts as a terminal emulator for actual redraws.
         outer = "tmx-test-header-" + uuid.uuid4().hex
         def view(*args):
@@ -334,24 +334,24 @@ class TmxTests(unittest.TestCase):
         self.until(lambda: self.mux("list-clients", "-F", "#{client_tty}") != "")
         def row():
             return view("capture-pane", "-p", "-N", "-t", "=view:").splitlines()[0]
-        self.until(lambda: "SUNY" in row())
+        self.until(lambda: "☀️" in row())
         right = self.field("pane_id", "=tmx:1.2")
         left_width = int(self.field("pane_width"))
         for number in (2, 3, 1, 2):
             view("send-keys", "-t", "=view:", "C-p")
             self.until(lambda: self.active() == f"{number}:1")
             # Wait for the terminal redraw, then check physical column placement.
-            left_tabs = " ".join("[x]" if n == number else f"[{n}]" for n in (1, 2, 3))
+            left_tabs = " ".join("[●]" if n == number else f"[{n}]" for n in (1, 2, 3))
             self.until(lambda: left_tabs in row()[:left_width])
             header = row()
             self.assertEqual(header[left_width], "┬", header)
             self.assertTrue(header.startswith("── " + left_tabs), header)
-            self.assertIn("[x] [2] [3]", header[left_width + 1:])
-            self.assertIn("sda: 78% | SUNY 24° UV 5 |", header[left_width + 1:])
-            self.assertNotIn("SUNY", header[:left_width])
+            self.assertIn("[●] [2] [3]", header[left_width + 1:])
+            self.assertIn("sda: 78% | ☀️ 24° UV 5 |", header[left_width + 1:])
+            self.assertNotIn("☀️", header[:left_width])
             ansi = view("capture-pane", "-p", "-e", "-N", "-t", "=view:").splitlines()[0]
-            self.assertIn("\x1b[31mx", ansi.split("┬")[0])
-            self.assertNotIn("\x1b[31mx", ansi.split("┬")[1])
+            self.assertIn("\x1b[31m●", ansi.split("┬")[0])
+            self.assertNotIn("\x1b[31m●", ansi.split("┬")[1])
             self.assertEqual(self.field("pane_id", "=tmx:1.2"), right)
         left = self.field("pane_id")
         view("send-keys", "-t", "=view:", "C-o")
@@ -359,15 +359,15 @@ class TmxTests(unittest.TestCase):
         for number in (5, 6, 4):
             view("send-keys", "-t", "=view:", "C-p")
             self.until(lambda: self.active() == f"{number}:2")
-            right_tabs = " ".join("[x]" if n == number else f"[{n - 3}]" for n in (4, 5, 6))
+            right_tabs = " ".join("[●]" if n == number else f"[{n - 3}]" for n in (4, 5, 6))
             self.until(lambda: right_tabs in row()[left_width + 1:])
             header = row()
             self.assertEqual(header[left_width], "┬", header)
             self.assertIn(right_tabs, header[left_width + 1:])
             self.assertEqual(self.field("pane_id"), left)
             ansi = view("capture-pane", "-p", "-e", "-N", "-t", "=view:").splitlines()[0]
-            self.assertNotIn("\x1b[31mx", ansi.split("┬")[0])
-            self.assertIn("\x1b[31mx", ansi.split("┬")[1])
+            self.assertNotIn("\x1b[31m●", ansi.split("┬")[0])
+            self.assertIn("\x1b[31m●", ansi.split("┬")[1])
 
     def test_ctrl_p_single_workspace_and_scrollback_preservation(self):
         process, terminal = self.scroll_fixture()

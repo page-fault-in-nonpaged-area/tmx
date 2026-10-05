@@ -76,20 +76,20 @@ class ConfigTests(unittest.TestCase):
                 try:
                     mux('-f', str(self.output / 'tmux.conf'), 'new-session', '-d', '-s', 'tmx', '-x', '80', '-y', '30')
                     mux('set-option', '-p', '-t', '=tmx:', '@tmx_side', 'right')
-                    mux('set-option', '-g', '@tmx_header_tabs', '[x] [2] [3]')
+                    mux('set-option', '-g', '@tmx_header_tabs', '[●] [2] [3]')
                     mux('set-option', '-g', '@tmx_storage', 'sda: 78%' if switches[0] else '')
-                    mux('set-option', '-g', '@tmx_weather', 'SUNY 24° UV 5' if switches[1] else '')
+                    mux('set-option', '-g', '@tmx_weather', '☀️ 24° UV 5' if switches[1] else '')
                     def render():
                         result = mux('display-message', '-p', '-t', '=tmx:', '#{E:@tmx_header_block}')
                         return re.sub(r'#\[[^]]*\]', '', result).strip()
                     parts = []
                     if switches[0]: parts.append('sda: 78%')
-                    if switches[1]: parts.append('SUNY 24° UV 5')
+                    if switches[1]: parts.append('☀️ 24° UV 5')
                     if switches[2]: parts.append(r'\d{2}/\d{2} \d{2}:\d{2}')
                     expected = r'\[ ' + r' \| '.join(parts) + r' \]' if parts else ''
                     self.assertRegex(render(), '^' + expected + '$')
                     mux('set-option', '-g', '@tmx_weather', '')
-                    parts = [p for p in parts if p != 'SUNY 24° UV 5']
+                    parts = [p for p in parts if p != '☀️ 24° UV 5']
                     expected = r'\[ ' + r' \| '.join(parts) + r' \]' if parts else ''
                     self.assertRegex(render(), '^' + expected + '$')
                     if not switches[0] and not switches[1]:
@@ -115,7 +115,7 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(disk.storage(), '#[fg=brightwhite]sda: #[fg=colour42]78%#[fg=brightwhite]')
         with patch.dict(weather.THEME, colors), patch.dict(weather.COLORS, colors['weather']):
             self.assertEqual(weather.render(weather.reading('SUNY', 24, 5)),
-                             '#[fg=colour123]SUNY#[fg=brightwhite] 24° #[fg=magenta]UV#[fg=brightwhite] 5')
+                             '#[fg=colour123]☀️#[fg=brightwhite] 24° #[fg=magenta]UV#[fg=brightwhite] 5')
 
     def test_disabled_plugins_do_not_start_worker_or_call_providers(self):
         from plugins import status

@@ -43,17 +43,17 @@ own set of **at most three workspaces**: **1–3 belong to the left**, and
 **4–6 belong to the right**. Numbers are global: selecting 2 always changes the
 left; selecting 5 always changes the right, regardless of the current focus.
 There are no workspaces 7–9. The three-workspace limit includes inactive ones.
-Each pane's top bar displays local labels 1–3, for example `[x] [2] [3]`.
+Each pane's top bar displays local labels 1–3, for example `[●] [2] [3]`.
 On the right these represent fixed workspace IDs 4–6; only the displayed labels
 change. Ctrl-b + 4/5/6 still selects the right-hand workspaces.
-The active workspace is marked by `x`: red in the focused pane, white in the
+The active workspace is marked by `●`: red in the focused pane, white in the
 inactive pane. The other labels keep their local display numbers. Numbers and brackets stay white. A teal-blue horizontal line
 indicates the focused side, including the first two strokes. Inactive horizontal borders, the vertical divider, and the `┬` junction are gray. These bars share one full-width top status row; there is no bottom
 status row. Header sections are explicitly ordered left then right, so swapping
 workspace terminals cannot move a header across the divider. This also avoids
 tmux's reserved two-character pane-header margin. The
 right side has one right-aligned block, for example:
-`[ sda: 78% | SUNY 24° UV 5 | 10/05 12:12 ]`.
+`[ sda: 78% | ☀️ 24° UV 5 | 10/05 12:12 ]`.
 
 `sda:` is a fixed lowercase white label for the filesystem mounted at `/`.
 Its percentage is **free space available to your user / total filesystem
@@ -68,7 +68,10 @@ widths, weather is omitted first, then storage, then the clock if necessary,
 so workspace labels are never overwritten.
 
 Temperatures are Celsius; weather numbers and brackets are white. Conditions use
-four capital letters: `SUNY` gold, `RAIN`/`DRZL` bright blue, `SNOW` pale blue,
+emojis: ☀️ sunny, 🌙 clear night, ⛅️ partly cloudy, ☁️ cloudy/overcast,
+🌫️ mist/fog, 🌦️ drizzle, 🌧️ rain, ❄️ snow, 🌨️ sleet, and ⛈️ storm.
+The existing four-letter condition codes remain in the cache and color settings.
+`SUNY` is gold, `RAIN`/`DRZL` bright blue, `SNOW` pale blue,
 `STRM` magenta, `SLET` cyan, and `CLDY`/`OVRC`/`FOGG`/`MIST` gray. `PART`
 is pale gold; `CLER` is pale blue for a clear night. `UV` always stays purple.
 Weather hides before storage or the clock when space is tight.

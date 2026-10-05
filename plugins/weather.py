@@ -20,6 +20,11 @@ if __package__ in (None, ""):
 from plugins.settings import COLORS as THEME, SETTINGS
 
 COLORS = THEME["weather"]
+ICONS = {
+    "SUNY": "☀️", "CLER": "🌙", "PART": "⛅️", "CLDY": "☁️", "OVRC": "☁️",
+    "MIST": "🌫️", "FOGG": "🌫️", "DRZL": "🌦️", "RAIN": "🌧️",
+    "SNOW": "❄️", "SLET": "🌨️", "STRM": "⛈️",
+}
 WTTR = {
     "SUNY": [113], "PART": [116], "CLDY": [119], "OVRC": [122],
     "MIST": [143], "FOGG": [248, 260], "DRZL": [263, 266],
@@ -59,7 +64,7 @@ def render(data):
     if data is None:
         return ""
     data = reading(data["state"], data["temperature"], data["uv"])
-    return (f'#[fg={COLORS[data["state"]]}]{data["state"]}'
+    return (f'#[fg={COLORS[data["state"]]}]{ICONS[data["state"]]}'
             f'#[fg={THEME["text"]}] {data["temperature"]}° #[fg={THEME["weather_uv"]}]UV'
             f'#[fg={THEME["text"]}] {data["uv"]}')
 

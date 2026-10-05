@@ -58,7 +58,7 @@ refresh_tabs() {
         tab_label=$tab_number
         # Right-hand labels are local 1-3; comparisons retain fixed IDs 4-6.
         if [ "$tab_side" = right ]; then tab_label=$((tab_number - 3)); fi
-        tab=$(printf '[#{?#{==:#{@tmx_workspace},%s},#[fg=#{?pane_active,#{@tmx_color_active_x},#{@tmx_color_inactive_x}}]x#[fg=#{@tmx_color_text}],%s}]' "$tab_number" "$tab_label")
+        tab=$(printf '[#{?#{==:#{@tmx_workspace},%s},#[fg=#{?pane_active,#{@tmx_color_active_x},#{@tmx_color_inactive_x}}]●#[fg=#{@tmx_color_text}],%s}]' "$tab_number" "$tab_label")
         case $tab_side in
             left) left_tabs="${left_tabs:+$left_tabs }$tab" ;;
             right) right_tabs="${right_tabs:+$right_tabs }$tab" ;;
