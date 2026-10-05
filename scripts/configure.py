@@ -137,7 +137,7 @@ def header(data, root):
         option = '@tmx_header_' + name
         fits = '#{e|>=:#{window_width},#{w:#{E:' + option + '}}}'
         footer = '#{?' + fits + ',#{E:' + option + '},' + footer + '}'
-    lines.append(f"set -g @tmx_footer '#[align=right]{footer}'")
+    lines.append(f"set -g @tmx_footer '#[align=centre]{footer}'")
     if enabled['disk'] or enabled['weather']:
         lines.append('set-hook -g client-attached[20] { run-shell -b \'exec python3 "${TMX_LAUNCHER%/*}/plugins/status.py" --watch "$TMX_SOCKET" 2>/dev/null\' }')
     else:

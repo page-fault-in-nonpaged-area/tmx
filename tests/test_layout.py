@@ -200,6 +200,9 @@ class LayoutTests(unittest.TestCase):
             rows, ansi = screen(), screen(True)
             self.assertIn("[1] [2] [3] [4] [●]", rows[top])
             self.assertIn("[1] [2] [●]", rows[bottom])
+            for row in (rows[top], rows[bottom], rows[-1]):
+                start, end = row.index("["), row.rindex("]") + 1
+                self.assertLessEqual(abs(start - (100 - end)), 1)
             self.assertNotIn("sda:", rows[top] + rows[bottom])
             self.assertNotIn("UV", rows[top] + rows[bottom])
             self.assertIn("sda: 78% | ☀️ 24° UV 5 |", rows[-1])

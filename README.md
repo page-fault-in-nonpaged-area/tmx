@@ -57,8 +57,8 @@ right side has one right-aligned block, for example:
 `[ sda: 78% | ☀️ 24° UV 5 | 10/05 12:12 ]`.
 
 Press **Option-y** to toggle vertical mode: the left side moves to the top and
-the right side moves to the bottom. Each pane keeps its own workspace header;
-disk, weather and clock move into a single bottom status row. Switching back
+the right side moves to the bottom. Each pane keeps its own centered workspace
+header; disk, weather and clock move into a centered bottom status row. Switching back
 restores the side-by-side layout and top status row. `tmx layout` performs the
 same toggle from a shell. The mode survives detachment, reattachment and
 configuration reloads. This only rearranges existing terminals: pane IDs,
