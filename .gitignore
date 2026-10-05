@@ -1,0 +1,4 @@
+# Local checkpoints and generated Python caches
+/backups/
+__pycache__/
+*.py[cod]
