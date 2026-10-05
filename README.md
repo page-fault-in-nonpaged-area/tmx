@@ -129,6 +129,13 @@ Detection uses the same foreground-process classifier as scrolling, including
 the Node-based Codex launcher. Ctrl-b then q/w remains available in every app.
 
 Press **Ctrl-u** to scroll up and **Ctrl-k** to scroll down, with no prefix.
+**Option-i/k** scroll up/down, **Option-o** cycles panes, and **Option-p** cycles
+existing workspaces on the focused side. These aliases handle Escape followed
+by the letter (`^[i`, `^[k`, `^[o`, `^[p`), including when your physical Ctrl key
+has been configured to send Option. They work in retained history too, with the
+same repeat acceleration and no additional helper processes. The original Ctrl
+shortcuts remain available. This does not remap the physical keyboard; Ctrl-b
+and Ctrl-q still require their original Ctrl sequences.
 Ordinary **Tab** goes directly to the application for completion/navigation.
 Holding either key repeats scrolling when the keyboard/iSH sends key repeats;
 the launcher does not invent a continuous timer without key-release events.

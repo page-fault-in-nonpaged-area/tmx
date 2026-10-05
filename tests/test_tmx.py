@@ -672,7 +672,79 @@ with (p / "input").open("ab", buffering=0) as output:
         os.write(terminal, b"\x02d")
         self.assertEqual(process.wait(timeout=5), 0)
 
-    def check_scroll_acceleration(self, mode):
+    def test_option_navigation_preserves_workspace_sides_and_processes(self):
+        self.start()
+        for number, side in ((3, "left"), (2, "left"), (6, "right"), (5, "right")):
+            result = self.launch("workspace", str(number), side)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        self.mux("select-pane", "-t", "=tmx:1.1")
+        before = self.mux("list-panes", "-s", "-F", "#{pane_id} #{pane_pid}")
+        process, terminal = self.attach()
+        for mode in ("root", "copy-mode", "copy-mode-vi"):
+            with self.subTest(mode=mode):
+                for position, sequence in ((1, (3, 1, 2)), (2, (6, 4, 5))):
+                    other_position = 3 - position
+                    other = self.field("pane_id", f"=tmx:1.{other_position}")
+                    for number in sequence:
+                        target = f"=tmx:1.{position}"
+                        if mode != "root":
+                            self.mux("set-option", "-w", "mode-keys", "vi" if mode.endswith("-vi") else "emacs")
+                            self.mux("copy-mode", "-t", target)
+                            self.until(lambda: self.field("pane_in_mode", target) == "1")
+                        os.write(terminal, b"\x1bp")
+                        self.until(lambda: self.active() == f"{number}:{position}")
+                        self.assertEqual(self.field("pane_id", f"=tmx:1.{other_position}"), other)
+                        self.assertEqual(self.field("window_panes"), "2")
+                        self.assertEqual(self.field("window_id"), "@0")
+                        while select.select([terminal], [], [], 0)[0]:
+                            os.read(terminal, 65536)
+                    if mode != "root":
+                        self.mux("copy-mode", "-t", target)
+                    os.write(terminal, b"\x1bo")
+                    self.until(lambda: self.active().endswith(f":{other_position}"))
+                    while select.select([terminal], [], [], 0)[0]:
+                        os.read(terminal, 65536)
+        after = self.mux("list-panes", "-s", "-F", "#{pane_id} #{pane_pid}")
+        self.assertEqual(sorted(before.splitlines()), sorted(after.splitlines()))
+        os.write(terminal, b"\x02d")
+        self.assertEqual(process.wait(timeout=5), 0)
+
+    def test_option_scroll_and_literal_tab_in_agent_views(self):
+        for mode, agent in (("inline", "codex"), ("alternate", "codex"),
+                            ("sgr", "claude"), ("inline", "muse")):
+            with self.subTest(mode=mode, agent=agent):
+                fixture = TmxTests("test_option_scroll_and_literal_tab_in_agent_views")
+                fixture.setUp()
+                try:
+                    process, terminal = fixture.scroll_fixture(mode, agent)
+                    os.write(terminal, b"\x09ikop")
+                    fixture.until(lambda: (fixture.root / "input").read_bytes() == b"\x09ikop")
+                    if mode == "inline":
+                        for keys in ("vi", "emacs"):
+                            fixture.mux("set-option", "-w", "mode-keys", keys)
+                            os.write(terminal, b"\x1bi")
+                            fixture.until(lambda: fixture.field("scroll_position") == "1")
+                            time.sleep(0.17)
+                            os.write(terminal, b"\x1bi")
+                            fixture.until(lambda: fixture.field("scroll_position") == "2")
+                            os.write(terminal, b"\x1bk")
+                            fixture.until(lambda: fixture.field("scroll_position") == "1")
+                            time.sleep(0.17)
+                            os.write(terminal, b"\x1bk")
+                            fixture.until(lambda: fixture.field("pane_in_mode") == "0")
+                        self.assertEqual((fixture.root / "input").read_bytes(), b"\x09ikop")
+                    else:
+                        column = (int(fixture.field("pane_width")) + 1) // 2
+                        row = (int(fixture.field("pane_height")) + 1) // 2
+                        for code, key in ((64, b"\x1bi"), (65, b"\x1bk")):
+                            before = (fixture.root / "input").read_bytes()
+                            os.write(terminal, key)
+                            expected = before + f"\x1b[<{code};{column};{row}M".encode()
+                            fixture.until(lambda: (fixture.root / "input").read_bytes() == expected)
+                finally:
+                    fixture.doCleanups()
+
+    def check_scroll_acceleration(self, mode, keys=(b"\x15", b"\x0b")):
         process, terminal = self.scroll_fixture(mode)
         history = mode == "inline"
         if history:
@@ -684,7 +756,7 @@ with (p / "input").open("ab", buffering=0) as output:
                 return int(self.field("scroll_position"))
             return (self.root / "input").read_bytes().count(b"M")
 
-        for key in (b"\x15", b"\x0b"):
+        for key in keys:
             with self.subTest(mode=mode, direction=key):
                 # Feed real client bytes for over two seconds, not mocked clocks.
                 start = time.monotonic()
@@ -729,6 +801,15 @@ with (p / "input").open("ab", buffering=0) as output:
 
     def test_claude_wheel_accelerates_both_directions_after_two_seconds(self):
         self.check_scroll_acceleration("sgr")
+
+    def test_option_history_accelerates_both_directions_after_two_seconds(self):
+        self.check_scroll_acceleration("inline", (b"\x1bi", b"\x1bk"))
+
+    def test_option_codex_wheel_accelerates_both_directions_after_two_seconds(self):
+        self.check_scroll_acceleration("alternate", (b"\x1bi", b"\x1bk"))
+
+    def test_option_claude_wheel_accelerates_both_directions_after_two_seconds(self):
+        self.check_scroll_acceleration("sgr", (b"\x1bi", b"\x1bk"))
 
     def test_mouse_wheel_sgr_and_manual_history_override(self):
         process, terminal = self.scroll_fixture("sgr")

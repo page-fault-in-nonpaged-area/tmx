@@ -16,6 +16,8 @@ Ctrl-p            next existing workspace in focused side, wrapping around
 Ctrl-b then 1-6    create/select an exact workspace on its assigned side
 Ctrl-o            next pane, wrapping from right to left
 Ctrl-u / Ctrl-k   scroll up / down (hold 2 seconds to accelerate)
+Option-i / k      scroll up / down (Escape + i/k)
+Option-o / p      next pane / next workspace (Escape + o/p)
 Ctrl-q            send Shift+Left in Codex; ordinary Ctrl-q elsewhere
 Ctrl-b then t      send a literal Tab to the application
 Ctrl-b then o      switch between left and right panes
