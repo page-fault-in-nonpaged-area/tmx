@@ -49,12 +49,23 @@ represent fixed workspace IDs 6–8; only the displayed labels change.
 Ctrl-b + 6/7/8 selects the right-hand workspaces.
 The active workspace is marked by `●`: red in the focused pane, white in the
 inactive pane. The other labels keep their local display numbers. Numbers and brackets stay white. A teal-blue horizontal line
-indicates the focused side, including the first two strokes. Inactive horizontal borders, the vertical divider, and the `┬` junction are gray. These bars share one full-width top status row; there is no bottom
+indicates the focused side, including the first two strokes. Inactive horizontal borders, the vertical divider, and the `┬` junction are gray. In side-by-side mode, these bars share one full-width top status row; there is no bottom
 status row. Header sections are explicitly ordered left then right, so swapping
 workspace terminals cannot move a header across the divider. This also avoids
-tmux's reserved two-character pane-header margin. The
+tmux's reserved two-character pane-header margin in side-by-side mode. The
 right side has one right-aligned block, for example:
 `[ sda: 78% | ☀️ 24° UV 5 | 10/05 12:12 ]`.
+
+Press **Option-y** to toggle vertical mode: the left side moves to the top and
+the right side moves to the bottom. Each pane keeps its own workspace header;
+disk, weather and clock move into a single bottom status row. Switching back
+restores the side-by-side layout and top status row. `tmx layout` performs the
+same toggle from a shell. The mode survives detachment, reattachment and
+configuration reloads. This only rearranges existing terminals: pane IDs,
+workspace assignments, running processes and focused workspace are retained.
+Workspace selection and cycling work the same in both layouts. Resizing may
+cause applications to redraw or reflow their text. Vertical mode uses native
+tmux headers and status formats, with no additional worker or weather requests.
 
 `sda:` is a fixed lowercase white label for the filesystem mounted at `/`.
 Its percentage is **free space available to your user / total filesystem

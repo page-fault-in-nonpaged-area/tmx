@@ -7,7 +7,7 @@ die() { printf 'tmx: %s\n' "$*" >&2; exit 2; }
 usage() {
     cat <<'EOF'
 Usage: tmx [1-8] | tmx --detached [1-8] | tmx list | tmx history
-       tmx app | tmx reset | tmx run codex [Codex arguments]
+       tmx app | tmx reset | tmx layout | tmx run codex [Codex arguments]
 
 tmx reconnects to your last workspace and active pane.
 Workspaces 1-5 belong to the left; 6-8 belong to the right.
@@ -19,6 +19,7 @@ Ctrl-u / Ctrl-k   scroll up / down (hold 2 seconds to accelerate)
 Option-i / k      scroll up / down (Escape + i/k)
 Option-o / p      next pane / next workspace (Escape + o/p)
 Option-r          terminate focused workspace and open a fresh shell
+Option-y          toggle stacked panes (left on top, right below)
 Ctrl-q            send Shift+Left in Codex; ordinary Ctrl-q elsewhere
 Ctrl-b then t      send a literal Tab to the application
 Ctrl-b then o      switch between left and right panes
@@ -46,6 +47,24 @@ case $TMX_SOCKET in tmx|tmx-test-*) ;; *) die 'unsupported TMX_SOCKET' ;; esac
 case $TMX_SOCKET in *[!a-zA-Z0-9_-]*) die 'invalid socket name' ;; esac
 export TMX_LAUNCHER TMX_SOCKET
 mux() { command tmux -L "$TMX_SOCKET" -f "$directory/.generated/tmux.conf" "$@" 9>&-; }
+
+# Restore appearance for the saved mode after reattach/config reload. This does
+# not select a layout, swap terminals or start/restart status workers.
+apply_orientation() {
+    if [ "$(mux show-option -qv -t '=tmx:' @tmx_vertical)" = 1 ]; then
+        mux set-option -t '=tmx:' status-position bottom \; \
+            set-option -t '=tmx:' 'status-format[0]' '#{E:@tmx_footer}' \; \
+            set-option -w -t "$main" pane-border-status top \; \
+            set-option -w -t "$main" pane-border-format '#{E:@tmx_vertical_header}' \; \
+            set-option -w -t "$main" pane-border-lines spaces
+    else
+        mux set-option -t '=tmx:' status-position top \; \
+            set-option -t '=tmx:' 'status-format[0]' '#{E:@tmx_horizontal_header}' \; \
+            set-option -w -t "$main" pane-border-status off \; \
+            set-option -w -t "$main" pane-border-format '' \; \
+            set-option -w -t "$main" pane-border-lines single
+    fi
+}
 
 # Cache each side's small tab list. tmux expands the active-workspace condition
 # itself during redraws, so no shell process is needed to render the top bar.
@@ -293,7 +312,7 @@ side=
 case ${1-} in
     --detached) action=detached; shift ;;
     workspace) action=workspace; shift ;; # Called by tmux key bindings.
-    list|history) action=$1; shift ;;
+    list|history|layout) action=$1; shift ;;
 esac
 if [ "$#" -gt 0 ]; then
     case $1 in
@@ -319,6 +338,7 @@ case $action in
     history) [ -z "$number" ] || die 'history prints the last active pane; takes no number'
              mux capture-pane -p -J -S - -t '=tmx:'; exit ;;
     workspace) [ -n "$number" ] || die 'workspace needs a number' ;;
+    layout) [ -z "$number" ] || die 'layout takes no arguments' ;;
 esac
 
 # Refuse to nest under unrelated tmux. Within tmx, change the existing session.
@@ -430,6 +450,44 @@ main=$(mux show-option -v -t '=tmx:' @tmx_main_window)
 [ "$(mux display-message -p -t "$main" '#{window_panes}')" = 2 ] ||
     die 'visible layout was modified outside tmx; leaving it untouched'
 
+if [ "$action" = layout ]; then
+    # A layout operates on tmux's internal pane order, which may differ from
+    # ownership after workspace swaps. Resolve owners, then correct ordering.
+    rows=$(mux list-panes -t "$main" -F '#{pane_id} #{@tmx_side} #{@tmx_workspace}')
+    left_pane=
+    right_pane=
+    while read -r pane owner slot; do
+        case $owner:$slot in
+            left:[1-5]) [ -z "$left_pane" ] || die 'duplicate visible left side'; left_pane=$pane ;;
+            right:[6-8]) [ -z "$right_pane" ] || die 'duplicate visible right side'; right_pane=$pane ;;
+            *) die 'invalid visible workspace; leaving terminals untouched' ;;
+        esac
+        [ "$(mux show-option -qv -t '=tmx:' "@tmx_workspace_$slot")" = "$pane" ] ||
+            die 'workspace registry mismatch; leaving terminals untouched'
+    done <<EOF
+$rows
+EOF
+    [ -n "$left_pane" ] && [ -n "$right_pane" ] || die 'missing visible workspace side'
+    focused=$(mux display-message -p -t "$main" '#{pane_id}')
+    previous=$(mux show-option -qv -t '=tmx:' @tmx_vertical)
+    original_layout=$(mux display-message -p -t "$main" '#{window_layout}')
+    if [ "$previous" = 1 ]; then vertical=0; layout=even-horizontal; else vertical=1; layout=even-vertical; fi
+    mux set-option -t '=tmx:' @tmx_vertical "$vertical"
+    apply_orientation
+    if ! mux select-layout -t "$main" "$layout"; then
+        mux set-option -t '=tmx:' @tmx_vertical "${previous:-0}"
+        apply_orientation
+        mux select-layout -t "$main" "$original_layout"
+        die 'terminal is too small for this layout; kept the previous mode'
+    fi
+    first=$(mux list-panes -t "$main" -F '#{pane_top} #{pane_left} #{pane_id}' |
+        sort -n -k1,1 -k2,2 | sed -n '1s/.* //p')
+    if [ "$first" != "$left_pane" ]; then
+        mux swap-pane -d -s "$left_pane" -t "$right_pane"
+    fi
+    mux select-pane -t "$focused"
+fi
+
 if [ -n "$number" ]; then
     # The registry is authoritative. Pane-local labels are for display only.
     candidates=
@@ -458,10 +516,10 @@ EOF
 $registry
 EOF
     # Resolve the visible slots by geometry, then verify their registered owner.
-    visible=$(mux list-panes -t "$main" -F '#{pane_left} #{pane_id}' | sort -n)
+    visible=$(mux list-panes -t "$main" -F '#{pane_top} #{pane_left} #{pane_id}' | sort -n -k1,1 -k2,2)
     left_pane=
     right_pane=
-    while read -r column visible_pane; do
+    while read -r row column visible_pane; do
         if [ -z "$left_pane" ]; then left_pane=$visible_pane; else right_pane=$visible_pane; fi
     done <<EOF
 $visible
@@ -562,6 +620,7 @@ EOF
         mux select-pane -t "$desired"
     fi
 fi
+case $action in attach|detached) apply_orientation ;; esac
 refresh_tabs
 # Reconnect to the permanent view without changing its focused side.
 mux select-window -t "$main"

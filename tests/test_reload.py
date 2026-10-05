@@ -36,6 +36,8 @@ class ReloadTests(unittest.TestCase):
                 run('python3', 'scripts/configure.py')
                 run('sh', 'tmx.sh', '--detached')
                 run('sh', 'tmx.sh', '--detached', '2')
+                run('sh', 'tmx.sh', 'layout')
+                self.assertEqual(mux('show-option', '-qv', '-t', '=tmx:', 'status-position'), 'bottom')
                 snapshot = mux('list-panes', '-a', '-F', '#{pane_id} #{pane_pid} #{@tmx_workspace} #{pane_dead} #{window_id} #{pane_active}')
                 worker = subprocess.Popen(['python3', str(root / 'plugins/status.py'), '--watch', socket], env=env)
                 deadline = time.monotonic() + 5
@@ -49,6 +51,9 @@ class ReloadTests(unittest.TestCase):
                 run('python3', 'scripts/reload.py')
                 worker.wait(timeout=5)
                 self.assertEqual(mux('list-panes', '-a', '-F', '#{pane_id} #{pane_pid} #{@tmx_workspace} #{pane_dead} #{window_id} #{pane_active}'), snapshot)
+                self.assertEqual(mux('show-option', '-qv', '-t', '=tmx:', 'status-position'), 'bottom')
+                self.assertEqual(mux('show-option', '-wqv', '-t', '=tmx:1', 'pane-border-status'), 'top')
+                self.assertEqual(mux('show-option', '-qv', '-t', '=tmx:', '@tmx_vertical'), '1')
                 self.assertEqual(mux('show-option', '-gqv', '@tmx_color_active_x'), 'blue')
                 self.assertEqual(mux('show-option', '-gqv', '@tmx_color_text'), 'brightwhite')
                 self.assertEqual(mux('show-option', '-gqv', '@tmx_storage'), '')
