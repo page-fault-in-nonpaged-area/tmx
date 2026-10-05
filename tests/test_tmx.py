@@ -95,7 +95,7 @@ class TmxTests(unittest.TestCase):
         self.assertEqual(first, self.snapshot())
         self.start("2")
         self.assertEqual(len(self.snapshot().splitlines()), 3)
-        self.assertEqual(self.field("@tmx_workspace", "=tmx:1.2"), "4")
+        self.assertEqual(self.field("@tmx_workspace", "=tmx:1.2"), "6")
         self.start("3")
         self.assertEqual(self.active(), "3:1")
         self.assertEqual(self.snapshot().splitlines()[:2], first.splitlines())
@@ -109,7 +109,7 @@ class TmxTests(unittest.TestCase):
         self.assertEqual(self.active(), "2:1")
 
     def test_abrupt_disconnect_preserves_processes_focus_and_shell_state(self):
-        self.start("4")
+        self.start("6")
         self.mux("select-pane", "-t", "=tmx:1.2")
         self.mux("send-keys", "-t", "=tmx:1.2", "TMX_SENTINEL=still_here", "Enter")
         before = self.snapshot()
@@ -118,7 +118,7 @@ class TmxTests(unittest.TestCase):
         process.wait(timeout=5)
         self.assertEqual(before, self.snapshot())
         second, terminal2 = self.attach()
-        self.assertEqual(self.active(), "4:2")
+        self.assertEqual(self.active(), "6:2")
         self.assertEqual(before, self.snapshot())
         # Query a non-exported variable in the same live shell.
         marker = self.root / "sentinel"
@@ -137,13 +137,13 @@ class TmxTests(unittest.TestCase):
         self.assertEqual(len(self.snapshot().splitlines()), 3)
         right = self.field("pane_id", "=tmx:1.2")
         os.write(terminal, b"\x02o")
-        self.until(lambda: self.active() == "4:2")
-        os.write(terminal, b"\x024")
-        self.until(lambda: self.active() == "4:2")
+        self.until(lambda: self.active() == "6:2")
+        os.write(terminal, b"\x026")
+        self.until(lambda: self.active() == "6:2")
         self.assertEqual(self.field("pane_id", "=tmx:1.2"), right)
         self.assertEqual(self.field("@tmx_workspace"), "2")
-        os.write(terminal, b"\x025")
-        self.until(lambda: self.active() == "5:2")
+        os.write(terminal, b"\x027")
+        self.until(lambda: self.active() == "7:2")
         before = self.snapshot()
         for key in (b'%', b'"', b'c', b'!', b'x', b':'):
             os.write(terminal, b"\x02" + key)
@@ -183,7 +183,7 @@ class TmxTests(unittest.TestCase):
                 self.until(lambda: self.active().endswith(":2"))
             other_position = 2 if position == 1 else 1
             other = self.field("pane_id", f"=tmx:1.{other_position}")
-            for number in range(1, 4) if side == "left" else range(4, 7):
+            for number in range(1, 6) if side == "left" else range(6, 9):
                 code = ord(str(number))
                 sequence = f"\x1b[{code};5u" if protocol == "csi-u" else f"\x1b[27;5;{code}~"
                 os.write(terminal, sequence.encode())
@@ -193,20 +193,20 @@ class TmxTests(unittest.TestCase):
                 self.assertEqual(self.field("window_id"), "@0")
                 while select.select([terminal], [], [], 0)[0]:
                     os.read(terminal, 65536)
-        self.assertEqual(len(self.snapshot().splitlines()), 6)
+        self.assertEqual(len(self.snapshot().splitlines()), 8)
         os.write(terminal, b"\x02d")
         self.assertEqual(process.wait(timeout=5), 0)
 
     def test_ctrl_p_cycles_existing_workspaces_independently_and_wraps(self):
         self.start()
         # Deliberately create sparse workspace numbers out of numeric order.
-        for number, side in ((3, "left"), (2, "left"), (6, "right"), (5, "right")):
+        for number, side in ((5, "left"), (3, "left"), (4, "left"), (2, "left"), (8, "right"), (7, "right")):
             result = self.launch("workspace", str(number), side)
             self.assertEqual(result.returncode, 0, result.stderr)
         self.mux("select-pane", "-t", "=tmx:1.1")
         processes = self.mux("list-panes", "-s", "-F", "#{pane_id} #{pane_pid}")
         process, terminal = self.attach()
-        for position, sequence in ((1, (3, 1, 2, 3, 1)), (2, (6, 4, 5, 6, 4))):
+        for position, sequence in ((1, (3, 4, 5, 1, 2, 3, 4, 5, 1)), (2, (8, 6, 7, 8, 6))):
             other_position = 3 - position
             other = self.field("pane_id", f"=tmx:1.{other_position}")
             for number in sequence:
@@ -228,7 +228,7 @@ class TmxTests(unittest.TestCase):
     def test_workspace_ownership_survives_pane_index_changes(self):
         self.start()
         for side in ("left", "right"):
-            for number in (("2", "3", "1") if side == "left" else ("5", "6", "4")):
+            for number in (("2", "3", "1") if side == "left" else ("7", "8", "6")):
                 self.assertEqual(self.launch("workspace", number, side).returncode, 0)
         left = self.field("pane_id", "=tmx:1.1")
         right = self.field("pane_id", "=tmx:1.2")
@@ -240,7 +240,7 @@ class TmxTests(unittest.TestCase):
         self.assertEqual(self.field("@tmx_side", "=tmx:1.0"), "left")
         self.assertEqual(self.field("@tmx_workspace", "=tmx:1.0"), "2")
         self.assertEqual(self.field("pane_id", "=tmx:1.1"), right)
-        self.assertEqual(self.field("@tmx_workspace", right), "4")
+        self.assertEqual(self.field("@tmx_workspace", right), "6")
         self.assertEqual(sorted(processes.splitlines()), sorted(self.mux(
             "list-panes", "-a", "-F", "#{pane_id} #{pane_pid}").splitlines()))
         self.assertNotEqual(self.field("window_id", left), self.field("window_id", right))
@@ -249,7 +249,7 @@ class TmxTests(unittest.TestCase):
         self.start()
         self.start("2")
         parked_right = self.field("pane_id", "=tmx:1.2")
-        self.assertEqual(self.launch("workspace", "5", "right").returncode, 0)
+        self.assertEqual(self.launch("workspace", "7", "right").returncode, 0)
         self.mux("select-pane", "-t", "=tmx:1.1")
         right = self.field("pane_id", "=tmx:1.2")
         process, terminal = self.attach()
@@ -268,26 +268,26 @@ class TmxTests(unittest.TestCase):
 
     def test_model_two_migration_preserves_terminals_and_registers_fixed_ids(self):
         self.start()
-        for number in ("2", "3", "5", "6"):
+        for number in ("2", "3", "7", "8"):
             self.start(number)
         # Reconstruct the previous overlapping labels without touching terminals.
-        for number in (4, 5, 6):
+        for number in (6, 7, 8):
             pane = self.mux("show-option", "-v", "-t", "=tmx:", f"@tmx_workspace_{number}")
-            self.mux("set-option", "-p", "-t", pane, "@tmx_workspace", str(number - 3))
+            self.mux("set-option", "-p", "-t", pane, "@tmx_workspace", str(number - 5))
         self.mux("set-option", "-t", "=tmx:", "@tmx_workspace_model", "2")
         before = self.snapshot()
         self.start()
         self.assertEqual(self.snapshot(), before)
-        for number in range(1, 7):
+        for number in (1, 2, 3, 6, 7, 8):
             pane = self.mux("show-option", "-v", "-t", "=tmx:", f"@tmx_workspace_{number}")
             self.assertEqual(self.field("@tmx_workspace", pane), str(number))
-            self.assertEqual(self.field("@tmx_side", pane), "left" if number < 4 else "right")
-        self.assertEqual(self.active(), "6:2")
+            self.assertEqual(self.field("@tmx_side", pane), "left" if number < 6 else "right")
+        self.assertEqual(self.active(), "8:2")
 
     def test_ctrl_p_rapid_repeats_keep_both_sides_independent(self):
         self.start()
         for side in ("left", "right"):
-            for number in (("2", "3", "1") if side == "left" else ("5", "6", "4")):
+            for number in (("2", "3", "1") if side == "left" else ("7", "8", "6")):
                 self.assertEqual(self.launch("workspace", number, side).returncode, 0)
         self.mux("select-pane", "-t", "=tmx:1.1")
         process, terminal = self.attach()
@@ -295,7 +295,7 @@ class TmxTests(unittest.TestCase):
             other = self.field("pane_id", f"=tmx:1.{3 - position}")
             for expected in (3, 2, 1, 3, 2, 1):
                 os.write(terminal, b"\x10\x10")
-                self.until(lambda: self.active() == f"{expected + (3 if position == 2 else 0)}:{position}")
+                self.until(lambda: self.active() == f"{expected + (5 if position == 2 else 0)}:{position}")
                 self.assertEqual(self.field("pane_id", f"=tmx:1.{3 - position}"), other)
                 self.assertEqual(self.field("@tmx_side", "=tmx:1.1"), "left")
                 self.assertEqual(self.field("@tmx_side", "=tmx:1.2"), "right")
@@ -307,17 +307,77 @@ class TmxTests(unittest.TestCase):
         for expected in (2, 3, 1) * 3:
             os.write(terminal, b"\x10\x0f\x10\x0f")
             self.until(lambda: self.active() == f"{expected}:1" and
-                       self.field("@tmx_workspace", "=tmx:1.2") == str(expected + 3))
+                       self.field("@tmx_workspace", "=tmx:1.2") == str(expected + 5))
             while select.select([terminal], [], [], 0.01)[0]:
                 os.read(terminal, 65536)
         os.write(terminal, b"\x02d")
         self.assertEqual(process.wait(timeout=5), 0)
 
+    def model_three_fixture(self):
+        """Restore the previous 1-3 / 4-6 registry without changing terminals."""
+        rows = self.mux("list-panes", "-s", "-F",
+                        "#{pane_id} #{@tmx_side} #{@tmx_workspace}").splitlines()
+        args = ["set-option", "-t", "=tmx:", "@tmx_workspace_model", "3"]
+        for number in range(1, 9):
+            args += [";", "set-option", "-qu", "-t", "=tmx:", f"@tmx_workspace_{number}"]
+        for row in rows:
+            pane, side, number = row.split()
+            number = int(number) - (2 if side == "right" else 0)
+            self.assertIn(number, range(1, 4) if side == "left" else range(4, 7))
+            args += [";", "set-option", "-t", "=tmx:", f"@tmx_workspace_{number}", pane,
+                     ";", "set-option", "-p", "-t", pane, "@tmx_workspace", str(number)]
+        self.mux(*args)
+
+    def test_model_three_migration_preserves_full_and_sparse_workspace_ids(self):
+        for numbers in ((2, 3, 7, 8), (3, 8)):
+            with self.subTest(existing=numbers):
+                fixture = TmxTests("test_model_three_migration_preserves_full_and_sparse_workspace_ids")
+                fixture.setUp()
+                try:
+                    fixture.start()
+                    for number in numbers:
+                        fixture.start(str(number))
+                    expected = fixture.mux("list-panes", "-s", "-F",
+                                           "#{pane_id} #{@tmx_side} #{@tmx_workspace}")
+                    before = fixture.snapshot()
+                    focus = fixture.field("pane_id", "=tmx:")
+                    marker = fixture.root / "preserved-shell"
+                    fixture.mux("send-keys", "-t", focus, "TMX_MIGRATION=retained", "Enter")
+                    fixture.model_three_fixture()
+                    self.assertEqual(fixture.launch("--detached").returncode, 0)
+                    self.assertEqual(fixture.snapshot(), before)
+                    self.assertEqual(fixture.field("pane_id", "=tmx:"), focus)
+                    self.assertEqual(fixture.mux("list-panes", "-s", "-F",
+                                                "#{pane_id} #{@tmx_side} #{@tmx_workspace}"), expected)
+                    self.assertEqual(fixture.mux("show-option", "-qv", "-t", "=tmx:", "@tmx_workspace_model"), "4")
+                    fixture.mux("send-keys", "-t", focus,
+                                f'printf "%s" "$TMX_MIGRATION" > {marker}', "Enter")
+                    fixture.until(marker.exists)
+                    self.assertEqual(marker.read_text(), "retained")
+                    self.assertEqual(fixture.launch("--detached").returncode, 0)
+                    self.assertEqual(fixture.snapshot(), before)
+                finally:
+                    fixture.doCleanups()
+
+    def test_model_three_migration_refuses_invalid_registry_without_relabelling(self):
+        self.start()
+        self.start("8")
+        self.model_three_fixture()
+        self.mux("set-option", "-t", "=tmx:", "@tmx_workspace_6", self.field("pane_id"))
+        before = self.mux("list-panes", "-s", "-F",
+                          "#{pane_id} #{pane_pid} #{@tmx_side} #{@tmx_workspace}")
+        result = self.launch("--detached")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("registry mismatch", result.stderr)
+        self.assertEqual(self.mux("list-panes", "-s", "-F",
+                                 "#{pane_id} #{pane_pid} #{@tmx_side} #{@tmx_workspace}"), before)
+        self.assertEqual(self.mux("show-option", "-qv", "-t", "=tmx:", "@tmx_workspace_model"), "3")
+
     def test_header_stays_over_its_side_after_workspace_swaps(self):
         self.start()
-        for number in ("2", "3", "5", "6", "1"):
+        for number in ("2", "3", "4", "5", "7", "8", "1"):
             self.start(number)
-        self.launch("workspace", "4")
+        self.launch("workspace", "6")
         self.mux("select-pane", "-t", "=tmx:1.1")
         self.mux("set-option", "-g", "@tmx_storage", "#[fg=white]sda: 78%")
         self.mux("set-option", "-g", "@tmx_weather",
@@ -337,11 +397,11 @@ class TmxTests(unittest.TestCase):
         self.until(lambda: "☀️" in row())
         right = self.field("pane_id", "=tmx:1.2")
         left_width = int(self.field("pane_width"))
-        for number in (2, 3, 1, 2):
+        for number in (2, 3, 4, 5, 1, 2):
             view("send-keys", "-t", "=view:", "C-p")
             self.until(lambda: self.active() == f"{number}:1")
             # Wait for the terminal redraw, then check physical column placement.
-            left_tabs = " ".join("[●]" if n == number else f"[{n}]" for n in (1, 2, 3))
+            left_tabs = " ".join("[●]" if n == number else f"[{n}]" for n in (1, 2, 3, 4, 5))
             self.until(lambda: left_tabs in row()[:left_width])
             header = row()
             self.assertEqual(header[left_width], "┬", header)
@@ -355,11 +415,11 @@ class TmxTests(unittest.TestCase):
             self.assertEqual(self.field("pane_id", "=tmx:1.2"), right)
         left = self.field("pane_id")
         view("send-keys", "-t", "=view:", "C-o")
-        self.until(lambda: self.active() == "4:2")
-        for number in (5, 6, 4):
+        self.until(lambda: self.active() == "6:2")
+        for number in (7, 8, 6):
             view("send-keys", "-t", "=view:", "C-p")
             self.until(lambda: self.active() == f"{number}:2")
-            right_tabs = " ".join("[●]" if n == number else f"[{n - 3}]" for n in (4, 5, 6))
+            right_tabs = " ".join("[●]" if n == number else f"[{n - 5}]" for n in (6, 7, 8))
             self.until(lambda: right_tabs in row()[left_width + 1:])
             header = row()
             self.assertEqual(header[left_width], "┬", header)
@@ -463,11 +523,11 @@ class TmxTests(unittest.TestCase):
         first_right = self.field("pane_id", "=tmx:1.2")
         self.start()
         self.assertEqual(self.snapshot(), original)
-        self.assertEqual(self.active(), "5:2")
-        self.assertEqual(self.launch("workspace", "4", "right").returncode, 0)
+        self.assertEqual(self.active(), "7:2")
+        self.assertEqual(self.launch("workspace", "6", "right").returncode, 0)
         self.assertEqual(self.field("pane_id", "=tmx:2.1"), second_left)
         self.assertEqual(self.field("pane_id", "=tmx:2.2"), first_right)
-        self.assertEqual(self.active(), "4:2")
+        self.assertEqual(self.active(), "6:2")
         # Every original process and pane still exists after swapping.
         before = sorted((line.split()[1], line.split()[2]) for line in original.splitlines())
         after = sorted((line.split()[1], line.split()[2]) for line in self.snapshot().splitlines())
@@ -521,13 +581,13 @@ class TmxTests(unittest.TestCase):
 
     def test_option_r_resets_only_focused_workspace_in_all_key_tables(self):
         self.start()
-        for number in (2, 3, 5, 6):
+        for number in (2, 3, 4, 5, 7, 8):
             self.assertEqual(self.launch("workspace", str(number)).returncode, 0)
         process, terminal = self.attach()
         directory = self.root / "current directory"
         directory.mkdir()
         marker = self.root / "foreground"
-        for number, mode in ((2, "root"), (5, "copy-mode"), (3, "copy-mode-vi")):
+        for number, mode in ((5, "root"), (7, "copy-mode"), (4, "copy-mode-vi")):
             with self.subTest(workspace=number, table=mode):
                 self.assertEqual(self.launch("workspace", str(number)).returncode, 0)
                 pane = self.field("pane_id", "=tmx:")
@@ -602,20 +662,20 @@ class TmxTests(unittest.TestCase):
     def test_fixed_ranges_bound_workspace_count_under_concurrency(self):
         self.start()
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            results = list(executor.map(lambda n: self.launch("--detached", str(n)), (2, 3, 5, 6)))
+            results = list(executor.map(lambda n: self.launch("--detached", str(n)), (2, 3, 4, 5, 7, 8)))
         for result in results:
             self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len(self.snapshot().splitlines()), 6)
+        self.assertEqual(len(self.snapshot().splitlines()), 8)
         before = self.snapshot()
-        for number in ("7", "8", "9"):
+        for number in ("0", "9", "10"):
             self.assertEqual(self.launch("--detached", number).returncode, 2)
         self.assertEqual(self.snapshot(), before)
         # Exact numbers always address their fixed side, regardless of focus.
         self.assertEqual(self.launch("workspace", "1").returncode, 0)
         self.assertEqual(self.active(), "1:1")
         left = self.field("pane_id")
-        self.assertEqual(self.launch("workspace", "6").returncode, 0)
-        self.assertEqual(self.active(), "6:2")
+        self.assertEqual(self.launch("workspace", "8").returncode, 0)
+        self.assertEqual(self.active(), "8:2")
         self.assertEqual(self.field("pane_id"), left)
 
     def test_history_and_foreign_tmux_rejection(self):
@@ -733,7 +793,7 @@ with (p / "input").open("ab", buffering=0) as output:
         self.assertEqual(self.field("pane_in_mode", "=tmx:1.2"), "0")
         # Pane and workspace navigation still work while reading history.
         os.write(terminal, b"\x0f")
-        self.until(lambda: self.active() == "4:2")
+        self.until(lambda: self.active() == "6:2")
         os.write(terminal, b"\x0f")
         self.until(lambda: self.active() == "1:1")
         os.write(terminal, b"\x1b[50;5u")
@@ -754,7 +814,7 @@ with (p / "input").open("ab", buffering=0) as output:
 
     def test_option_navigation_preserves_workspace_sides_and_processes(self):
         self.start()
-        for number, side in ((3, "left"), (2, "left"), (6, "right"), (5, "right")):
+        for number, side in ((5, "left"), (3, "left"), (4, "left"), (2, "left"), (8, "right"), (7, "right")):
             result = self.launch("workspace", str(number), side)
             self.assertEqual(result.returncode, 0, result.stderr)
         self.mux("select-pane", "-t", "=tmx:1.1")
@@ -762,7 +822,7 @@ with (p / "input").open("ab", buffering=0) as output:
         process, terminal = self.attach()
         for mode in ("root", "copy-mode", "copy-mode-vi"):
             with self.subTest(mode=mode):
-                for position, sequence in ((1, (3, 1, 2)), (2, (6, 4, 5))):
+                for position, sequence in ((1, (3, 4, 5, 1, 2)), (2, (8, 6, 7))):
                     other_position = 3 - position
                     other = self.field("pane_id", f"=tmx:1.{other_position}")
                     for number in sequence:
@@ -991,7 +1051,7 @@ with (p / "input").open("ab", buffering=0) as output:
                  shlex.join([sys.executable, str(script), str(other)]), "Enter")
         self.until(lambda: self.field("pane_current_command", "=tmx:1.2").startswith("python"))
         os.write(terminal, b"\x0f")
-        self.until(lambda: self.active() == "4:2")
+        self.until(lambda: self.active() == "6:2")
         os.write(terminal, b"\x11")
         self.until(other.exists)
         self.assertEqual(other.read_bytes(), b"\x11")

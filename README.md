@@ -39,13 +39,14 @@ so no YAML parsing or new processes are added to keyboard or redraw paths.
 When disk and weather are both disabled, no status worker starts.
 
 `tmx` opens two side-by-side terminals: **left** and **right**. Each side has its
-own set of **at most three workspaces**: **1–3 belong to the left**, and
-**4–6 belong to the right**. Numbers are global: selecting 2 always changes the
-left; selecting 5 always changes the right, regardless of the current focus.
-There are no workspaces 7–9. The three-workspace limit includes inactive ones.
-Each pane's top bar displays local labels 1–3, for example `[●] [2] [3]`.
-On the right these represent fixed workspace IDs 4–6; only the displayed labels
-change. Ctrl-b + 4/5/6 still selects the right-hand workspaces.
+own set of workspaces: **at most five on the left (1–5)** and **three on the
+right (6–8)**. Numbers are global: selecting 2 always changes the left;
+selecting 7 always changes the right, regardless of the current focus.
+The limits include inactive workspaces. New shells are created only when their
+workspace is selected, so increasing the limit does not start extra processes.
+The left bar displays labels 1–5; the right bar displays 1–3. On the right these
+represent fixed workspace IDs 6–8; only the displayed labels change.
+Ctrl-b + 6/7/8 selects the right-hand workspaces.
 The active workspace is marked by `●`: red in the focused pane, white in the
 inactive pane. The other labels keep their local display numbers. Numbers and brackets stay white. A teal-blue horizontal line
 indicates the focused side, including the first two strokes. Inactive horizontal borders, the vertical divider, and the `┬` junction are gray. These bars share one full-width top status row; there is no bottom
@@ -98,7 +99,7 @@ prints the styled weather segment (or a blank line on failure).
 Later launches reconnect to the same two visible terminals, selected workspaces,
 focused side, running programs and retained history. Run any program, including
 `codex`, normally in either side. `tmx 3` creates or selects workspace 3 in the
-left pane. On the first launch, `tmx 3` starts left:3 and right:4.
+left pane. On the first launch, `tmx 3` starts left:3 and right:6.
 
 A session registry anchors each workspace number to its stable tmux pane ID.
 Ctrl-p resolves the currently focused terminal in the permanent visible window
@@ -111,20 +112,22 @@ individual terminals into the two visible positions; it does not switch the
 whole window. Additional workspaces therefore use additional background
 terminals, while exactly two are visible. There is no nested tmux layer.
 Existing installations migrate their old left/right terminals to the matching
-side, retaining every process and the current view. Existing left workspaces
-are numbered 1–3 and right workspaces 4–6 in their previous numeric order.
-For the previous full 1–3 layout, the right side becomes 4, 5, 6 respectively.
+side, retaining every process and the current view. The previous 1–3 / 4–6
+layout keeps its left IDs and moves right IDs 4/5/6 to 6/7/8 without changing
+pane IDs, processes or focus. Sparse IDs stay sparse. Older overlapping labels
+are assigned in numeric order within their side.
 
 Press **Ctrl-o** to cycle forward through the two panes: left → right → left.
 Press **Ctrl-p** to cycle forward through the **existing workspaces in the
 focused pane**, in numeric order, wrapping back to the lowest number. For
-example, left cycles 1 → 2 → 3 → 1 and right cycles 4 → 5 → 6 → 4.
+example, a full left side cycles 1 → 2 → 3 → 4 → 5 → 1 and the right cycles
+6 → 7 → 8 → 6.
 Missing workspaces are skipped. The other side stays
 unchanged. If the side has only one workspace, Ctrl-p stays there; it never
 creates new workspaces.
 
-Press **Ctrl-b**, release it, then **1–6** to create or select an exact workspace
-on its fixed side. Selecting 1–3 focuses the left; 4–6 focuses the right. These controls also work while reading scrollback.
+Press **Ctrl-b**, release it, then **1–8** to create or select an exact workspace
+on its fixed side. Selecting 1–5 focuses the left; 6–8 focuses the right. These controls also work while reading scrollback.
 
 Press **Ctrl-q** to send **Shift+Left** when the focused pane is running Codex
 (for its questions UI). For other foreground programs it sends ordinary Ctrl-q.
@@ -217,7 +220,7 @@ side; Ctrl-o changes which side is focused.
 
 | Keys (press Ctrl-b, release, then the next key) | Action |
 | --- | --- |
-| `1`–`3` / `4`–`6` | Create/switch workspace on the left / right |
+| `1`–`5` / `6`–`8` | Create/switch workspace on the left / right |
 | `o` or Tab | Switch between the two panes |
 | `t` | Send a literal Tab to the application |
 | `d` | Detach, keeping everything running |
@@ -227,7 +230,7 @@ side; Ctrl-o changes which side is focused.
 | `?` | Show shortcuts |
 
 The **Ctrl-p** and **Ctrl-b then digit** shortcuts use ordinary control and number
-characters, so they do not depend on a keyboard supporting Ctrl+number chords. Direct Ctrl+1–6 also remain available for
+characters, so they do not depend on a keyboard supporting Ctrl+number chords. Direct Ctrl+1–8 also remain available for
 terminals that send distinct CSI-u or xterm modifyOtherKeys sequences, but are
 not required. The wrapper never maps ordinary digits outside the prefix,
 Escape, NUL or Backspace to workspace switching.
@@ -259,7 +262,7 @@ can reflow the display; it does not restart pane processes.
 
 `tmx list` lists left/right workspaces, their pane IDs and which are visible. `tmx history` prints the active pane's retained
 history into the calling terminal (detach first to use iSH's native scrollback).
-`tmx --detached [1-6]` prepares or switches the numbered workspace on its fixed side without attaching. `tmx` inside this
+`tmx --detached [1-8]` prepares or switches the numbered workspace on its fixed side without attaching. `tmx` inside this
 session is harmless; inside unrelated tmux it asks you to detach first.
 
 The private `tmx` server uses the compiled `.generated/tmux.conf` from this
