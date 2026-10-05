@@ -865,12 +865,12 @@ with (p / "input").open("ab", buffering=0) as output:
                             os.write(terminal, b"\x1bi")
                             fixture.until(lambda: fixture.field("scroll_position") == "1")
                             time.sleep(0.17)
-                            os.write(terminal, b"\x1bi")
+                            os.write(terminal, b"\x15")
                             fixture.until(lambda: fixture.field("scroll_position") == "2")
-                            os.write(terminal, b"\x1bk")
+                            os.write(terminal, b"\x0b")
                             fixture.until(lambda: fixture.field("scroll_position") == "1")
                             time.sleep(0.17)
-                            os.write(terminal, b"\x1bk")
+                            os.write(terminal, b"\x0b")
                             fixture.until(lambda: fixture.field("pane_in_mode") == "0")
                         self.assertEqual((fixture.root / "input").read_bytes(), b"\x09ikop")
                     else:
@@ -942,8 +942,44 @@ with (p / "input").open("ab", buffering=0) as output:
     def test_claude_wheel_accelerates_both_directions_after_two_seconds(self):
         self.check_scroll_acceleration("sgr")
 
-    def test_option_history_accelerates_both_directions_after_two_seconds(self):
-        self.check_scroll_acceleration("inline", (b"\x1bi", b"\x1bk"))
+    def test_option_copy_mode_directions_preserve_selection_and_processes(self):
+        process, terminal = self.scroll_fixture()
+        before = self.snapshot()
+        for vertical in (False, True):
+            if vertical:
+                result = self.launch("layout")
+                self.assertEqual(result.returncode, 0, result.stderr)
+            for mode in ("vi", "emacs"):
+                with self.subTest(vertical=vertical, mode=mode):
+                    self.mux("set-option", "-w", "mode-keys", mode)
+                    os.write(terminal, b"\x1b0")
+                    self.until(lambda: self.field("pane_in_mode") == "1")
+                    # Start inside a line so native end-of-line wrapping does
+                    # not obscure the direction and selection checks.
+                    self.mux("send-keys", "-X", "top-line")
+                    self.mux("send-keys", "-X", "start-of-line")
+                    self.mux("send-keys", "-X", "-N", "5", "cursor-right")
+                    self.mux("send-keys", "-X", "-N", "3", "cursor-down")
+                    self.mux("send-keys", "-X", "begin-selection")
+                    x, y = int(self.field("copy_cursor_x")), int(self.field("copy_cursor_y"))
+                    for key, expected in ((b"\x1bi", (x, y - 1)),
+                                          (b"\x1bl", (x + 1, y - 1)),
+                                          (b"\x1bj", (x, y - 1)),
+                                          (b"\x1bk", (x, y))):
+                        os.write(terminal, key)
+                        self.until(lambda: (int(self.field("copy_cursor_x")),
+                                            int(self.field("copy_cursor_y"))) == expected)
+                        self.assertEqual(self.field("pane_in_mode"), "1")
+                        if expected != (x, y):
+                            self.assertEqual(self.field("selection_present"), "1")
+                        self.assertEqual(self.snapshot(), before)
+                    for step in range(1, 4):
+                        os.write(terminal, b"\x1bl")
+                        self.until(lambda: int(self.field("copy_cursor_x")) == x + step)
+                    self.mux("send-keys", "-X", "cancel")
+        self.assertEqual((self.root / "input").read_bytes(), b"")
+        os.write(terminal, b"\x02d")
+        self.assertEqual(process.wait(timeout=5), 0)
 
     def test_option_codex_wheel_accelerates_both_directions_after_two_seconds(self):
         self.check_scroll_acceleration("alternate", (b"\x1bi", b"\x1bk"))

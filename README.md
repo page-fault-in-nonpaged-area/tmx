@@ -146,11 +146,12 @@ Detection uses the same foreground-process classifier as scrolling, including
 the Node-based Codex launcher. Ctrl-b then q/w remains available in every app.
 
 Press **Ctrl-u** to scroll up and **Ctrl-k** to scroll down, with no prefix.
-**Option-i/k** scroll up/down, **Option-o** cycles panes, and **Option-p** cycles
+**Option-i/k** scroll up/down outside copy mode, **Option-o** cycles panes, and **Option-p** cycles
 existing workspaces on the focused side. These aliases handle Escape followed
 by the letter (`^[i`, `^[k`, `^[o`, `^[p`), including when your physical Ctrl key
-has been configured to send Option. They work in retained history too, with the
-same repeat acceleration and no additional helper processes. The original Ctrl
+has been configured to send Option. Pane/workspace navigation works in retained
+history too. In copy mode, Option-i/j/k/l instead move the cursor up/left/down/right
+using native tmux controls. The original Ctrl
 shortcuts remain available. This does not remap the physical keyboard; Ctrl-b
 and Ctrl-q still require their original Ctrl sequences.
 **Option-r** (`^[r`, or your remapped Ctrl+r) terminates the focused workspace's
@@ -183,8 +184,13 @@ Muse in an unverified fullscreen mode, and Claude fullscreen without mouse
 reporting show an unsupported-view message instead of receiving guessed keys.
 **Option-0** enters tmux copy mode in the focused pane, regardless of the app.
 It requires no prefix or arrow key; `q` exits back to the running application.
+In copy mode, **Option-i** moves up, **Option-k** down, **Option-j** left and
+**Option-l** right, including while extending a selection. Holding the keys
+repeats movement at the keyboard's normal repeat rate. Ctrl-u/k remain available
+for accelerated history scrolling.
 Ctrl-b then `u` explicitly opens retained terminal history regardless of app.
-While in that history, `q` exits and scrolling down to the bottom returns live.
+While in that history, `q` exits and scrolling down to the bottom with Ctrl-k
+returns live. Option-k moves the cursor without leaving copy mode.
 Ctrl-k at the ordinary live bottom does nothing.
 
 The first press responds immediately. Holding a key for **2 seconds** accelerates
