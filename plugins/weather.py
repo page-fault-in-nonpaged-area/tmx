@@ -15,10 +15,11 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 INTERVAL = 3600
-CONFIG = Path(__file__).with_name("weather.json")
-COLORS = {"SUNY": 220, "CLER": 159, "PART": 180, "CLDY": 250,
-          "OVRC": 250, "MIST": 245, "FOGG": 245, "DRZL": 39,
-          "RAIN": 39, "SNOW": 159, "SLET": 51, "STRM": 201}
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from plugins.settings import COLORS as THEME, SETTINGS
+
+COLORS = THEME["weather"]
 WTTR = {
     "SUNY": [113], "PART": [116], "CLDY": [119], "OVRC": [122],
     "MIST": [143], "FOGG": [248, 260], "DRZL": [263, 266],
@@ -58,9 +59,9 @@ def render(data):
     if data is None:
         return ""
     data = reading(data["state"], data["temperature"], data["uv"])
-    return (f'#[fg=colour{COLORS[data["state"]]}]{data["state"]}'
-            f'#[fg=white] {data["temperature"]}° #[fg=colour141]UV'
-            f'#[fg=white] {data["uv"]}')
+    return (f'#[fg={COLORS[data["state"]]}]{data["state"]}'
+            f'#[fg={THEME["text"]}] {data["temperature"]}° #[fg={THEME["weather_uv"]}]UV'
+            f'#[fg={THEME["text"]}] {data["uv"]}')
 
 
 def fetch_json(url):
@@ -109,7 +110,7 @@ def fetch_weather(config):
 
 
 def load_config():
-    data = json.loads(CONFIG.read_text())
+    data = SETTINGS["weather"]
     city = data["city"]
     if not isinstance(city, str) or not city.strip() or len(city) > 200:
         raise ValueError("invalid city")

@@ -7,24 +7,15 @@ import subprocess
 import sys
 import time
 
-import weather
-
-
-def storage():
-    """Percent of total root filesystem space available to this user."""
-    try:
-        stats = os.statvfs("/")
-        if stats.f_blocks <= 0:
-            return ""
-        percent = min(100, round(100 * max(0, stats.f_bavail) / stats.f_blocks))
-        color = "colour204" if percent < 30 else "colour208" if percent < 50 else "green"
-        return f"#[fg=white]sda: #[fg={color}]{percent}%#[fg=white]"
-    except OSError:
-        return ""
+# Support direct execution from any working directory.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from plugins import disk, weather
+from plugins.settings import ENABLED
 
 
 def watch(socket):
-    if os.environ.get("TMX_STATUS_DISABLED") == "1":
+    if os.environ.get("TMX_STATUS_DISABLED") == "1" or not (ENABLED["disk"] or ENABLED["weather"]):
         return
     if socket != "tmx" and not socket.startswith("tmx-test-"):
         return
@@ -47,8 +38,8 @@ def watch(socket):
         cache = root / (socket + ".weather.json")
         while subprocess.run(["tmux", "-L", socket, "has-session", "-t", "=tmx"],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5).returncode == 0:
-            publish("@tmx_storage", storage())
-            if os.environ.get("TMX_WEATHER_DISABLED") != "1":
+            publish("@tmx_storage", disk.storage() if ENABLED["disk"] else "")
+            if ENABLED["weather"] and os.environ.get("TMX_WEATHER_DISABLED") != "1":
                 weather.cycle(cache, lambda value: publish("@tmx_weather", value))
             else:
                 publish("@tmx_weather", "")

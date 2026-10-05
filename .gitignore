@@ -2,3 +2,5 @@
 /backups/
 __pycache__/
 *.py[cod]
+/.generated/
+/.staging/

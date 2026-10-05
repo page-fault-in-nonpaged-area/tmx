@@ -1,13 +1,12 @@
-import importlib.util
 import json
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 
-spec = importlib.util.spec_from_file_location("weather", Path(__file__).resolve().parents[1] / "weather.py")
-weather = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(weather)
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from plugins import weather
 
 
 class WeatherTests(unittest.TestCase):

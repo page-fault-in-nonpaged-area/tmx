@@ -2,7 +2,41 @@
 
 Run `tmx` from bash or sh on dev@dev. The command points to `tmx.sh` in this
 directory. Requires Linux, tmux 3.2+, bash, readlink and flock. The optional
-weather helper and the tests also use Python 3 (standard library only). Installation is private to dev, with owner-only permissions.
+status plugins use Python 3's standard library. Building configuration and running
+tests require make, Python 3 and PyYAML (`python3 -m pip install -r requirements-dev.txt`,
+or your distribution's Python YAML package). Installation is private to the current user,
+with no sudo or changes to shell startup files.
+
+```sh
+make test
+make install
+```
+
+`make install` compiles settings and creates `~/.local/bin/tmx` pointing to this
+checkout's `tmx.sh`. It is safe to repeat and refuses to overwrite another command
+or unrelated symlink. Keep this checkout in place after installation. The install
+directory must already be in your PATH; otherwise the installer tells you to add
+it. Choose another user-owned PATH directory with `make install BIN_DIR=/your/bin`.
+Installation does not reload or restart a running session.
+
+Edit the root `config.yml` to choose text, border, indicator and plugin colors,
+weather location, and the three `plugins.disk`, `plugins.weather`, and
+`plugins.clock` enable switches. Defaults reproduce the previous appearance.
+Colors accept tmux names, `colour0`–`colour255`, and quoted hex values such as
+`"#ff5f87"`. Plugin switches must be YAML `true` or `false`.
+
+Run `make configure` to compile changes for the next new server, or `make reload`
+to apply them to your running private session without restarting workspace
+programs. Reload replaces only the optional status worker and retains its hourly
+weather cache. Invalid configuration fails before replacing generated settings.
+Ordinary reattachment keeps current settings and workspaces.
+
+All three status components live under `plugins/`: `disk.py`, `weather.py` and
+`clock.tmux`. `plugins/status.py` coordinates the disk and weather in one worker;
+`plugins/settings.py` loads the generated JSON once. The clock remains a native
+tmux format. YAML is compiled into ignored `.generated/` files at build time,
+so no YAML parsing or new processes are added to keyboard or redraw paths.
+When disk and weather are both disabled, no status worker starts.
 
 `tmx` opens two side-by-side terminals: **left** and **right**. Each side has its
 own set of **at most three workspaces**: **1–3 belong to the left**, and
@@ -39,9 +73,9 @@ four capital letters: `SUNY` gold, `RAIN`/`DRZL` bright blue, `SNOW` pale blue,
 is pale gold; `CLER` is pale blue for a clear night. `UV` always stays purple.
 Weather hides before storage or the clock when space is tight.
 
-The separate `weather.py` helper reads `weather.json`, initially set to Toronto.
-Change its city and matching latitude/longitude to use another location; the
-worker notices configuration changes within a minute. It checks
+The `plugins/weather.py` helper uses the location in `config.yml`, initially
+Toronto. Change its city and matching latitude/longitude, then run `make reload`
+to apply it. It checks
 [wttr.in](https://github.com/chubin/wttr.in#json-output) hourly, with
 [Open-Meteo](https://open-meteo.com/en/docs) as an independent fallback. The
 fallback uses the current hour's UV forecast, not the day's maximum.
@@ -49,12 +83,12 @@ If both sources fail or the data is invalid, the entire weather segment is
 hidden. Failed checks are cached too, so an outage never triggers requests on
 every redraw; the next normal attempt is an hour later.
 
-The separate `status.py` worker starts when a client attaches. It reads free
-space and calls the modular `weather.py` helper, publishing values directly to tmux; typing, scrolling and clock redraws do not
+The `plugins/status.py` worker starts when a client attaches. It reads free
+space and calls the modular `plugins/weather.py` helper, publishing values directly to tmux; typing, scrolling and clock redraws do not
 launch weather commands. State lives under `${XDG_STATE_HOME:-~/.local/state}/tmx/`.
 The worker continues hourly checks while detached and exits after its tmux
 session ends. The main `tmx.sh` has no status-plugin logic. Without Python 3, storage and
-weather are absent; the clock still works. `python3 weather.py --once` performs a standalone check and
+weather are absent; the clock still works. `python3 plugins/weather.py --once` performs a standalone check and
 prints the styled weather segment (or a blank line on failure).
 
 
@@ -209,27 +243,16 @@ history into the calling terminal (detach first to use iSH's native scrollback).
 `tmx --detached [1-6]` prepares or switches the numbered workspace on its fixed side without attaching. `tmx` inside this
 session is harmless; inside unrelated tmux it asks you to detach first.
 
-The private `tmx` server uses this directory's `tmux.conf`, with a 100,000-line
+The private `tmx` server uses the compiled `.generated/tmux.conf` from this
+directory's `tmux.conf` template and `config.yml`, with a 100,000-line
 history limit per pane. Normal `tmux`, `~/.tmux.conf`, shell startup files and
 Codex configuration are unchanged. Split panes use tmux history; the old cdx
 alternate-screen workaround is not carried over. Native iSH finger scrolling
 is not guaranteed for a split tmux display.
 
-Install as dev, without sudo:
-
-```sh
-chmod 700 /home/dev/Out/tmx /home/dev/Out/tmx/tmx.sh
-ln -s /home/dev/Out/tmx/tmx.sh /home/dev/.local/bin/tmx
-```
-
-The former `cdx` command is removed on installation; its source is retained in
-`/home/dev/Out/codex-mobile` for reference. No old running sessions are killed.
-Configuration changes apply to a newly started server. The independent-workspace
-migration reloads the private configuration once, preserving running programs.
-Ordinary reattachment does not reload settings or rebuild panes.
-
-Run the isolated integration checks with `python3 -m unittest discover -s tests -v`.
-They use private test sockets and never send model requests.
+Run `make test` for syntax checks and isolated integration tests, including all
+plugin combinations, color settings, hourly failure caching and safe installation.
+Tests use private sockets and never send model or weather requests.
 
 See the [tmux manual](https://man.openbsd.org/tmux) for session persistence,
 `remain-on-exit`, and extended key handling.

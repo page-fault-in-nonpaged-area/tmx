@@ -42,7 +42,7 @@ TMX_SOCKET=${TMX_SOCKET:-tmx}
 case $TMX_SOCKET in tmx|tmx-test-*) ;; *) die 'unsupported TMX_SOCKET' ;; esac
 case $TMX_SOCKET in *[!a-zA-Z0-9_-]*) die 'invalid socket name' ;; esac
 export TMX_LAUNCHER TMX_SOCKET
-mux() { command tmux -L "$TMX_SOCKET" -f "$directory/tmux.conf" "$@" 9>&-; }
+mux() { command tmux -L "$TMX_SOCKET" -f "$directory/.generated/tmux.conf" "$@" 9>&-; }
 
 # Cache each side's small tab list. tmux expands the active-workspace condition
 # itself during redraws, so no shell process is needed to render the top bar.
@@ -55,7 +55,7 @@ refresh_tabs() {
         tab_label=$tab_number
         # Right-hand labels are local 1-3; comparisons retain fixed IDs 4-6.
         if [ "$tab_side" = right ]; then tab_label=$((tab_number - 3)); fi
-        tab=$(printf '[#{?#{==:#{@tmx_workspace},%s},#[fg=#{?pane_active,red,white}]x#[fg=white],%s}]' "$tab_number" "$tab_label")
+        tab=$(printf '[#{?#{==:#{@tmx_workspace},%s},#[fg=#{?pane_active,#{@tmx_color_active_x},#{@tmx_color_inactive_x}}]x#[fg=#{@tmx_color_text}],%s}]' "$tab_number" "$tab_label")
         case $tab_side in
             left) left_tabs="${left_tabs:+$left_tabs }$tab" ;;
             right) right_tabs="${right_tabs:+$right_tabs }$tab" ;;
@@ -251,6 +251,8 @@ EOF
     exit 0
 fi
 
+[ -r "$directory/.generated/tmux.conf" ] || die "run make configure in $directory first"
+
 action=attach
 number=
 side=
@@ -338,7 +340,7 @@ EOF
 $panes
 EOF
     mux set-option -t '=tmx:' @tmx_main_window "$main" \; \
-        source-file "$directory/tmux.conf" \; \
+        source-file "$directory/.generated/tmux.conf" \; \
         set-option -t '=tmx:' @tmx_workspace_model 2
 fi
 # Model 3 gives every workspace one global number and a permanent pane ID.
@@ -520,5 +522,5 @@ exec 9>&-
 
 if [ "$action" = attach ] && [ "$inside" = no ]; then
     # Move the session to this client; do not leave a stale phone client in charge.
-    exec tmux -L "$TMX_SOCKET" -f "$directory/tmux.conf" attach-session -d -t '=tmx'
+    exec tmux -L "$TMX_SOCKET" -f "$directory/.generated/tmux.conf" attach-session -d -t '=tmx'
 fi

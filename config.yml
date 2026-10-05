@@ -1,0 +1,41 @@
+# Run make configure after editing. YAML is parsed at build time only.
+colors:
+  text: white                    # Labels, numbers, brackets and separators
+  background: default
+  active_border: colour37        # Teal top line in the focused pane
+  inactive_border: colour244
+  divider: colour244             # The top junction: ┬
+  pane_border: colour244          # Vertical divider
+  pane_active_border: colour244
+  active_x: red                  # Focused pane's current workspace
+  inactive_x: white
+  clock_date: colour220
+  clock_time: green
+  disk_low: colour204            # Below 30% free: pinkish red
+  disk_medium: colour208         # 30–49% free: orange
+  disk_high: green               # 50% or more free
+  weather_uv: colour141
+  weather:
+    SUNY: colour220
+    CLER: colour159
+    PART: colour180
+    CLDY: colour250
+    OVRC: colour250
+    MIST: colour245
+    FOGG: colour245
+    DRZL: colour39
+    RAIN: colour39
+    SNOW: colour159
+    SLET: colour51
+    STRM: colour201
+
+plugins:
+  disk: true
+  weather: true
+  clock: true
+
+weather:
+  city: Toronto,Canada
+  latitude: 43.6532
+  longitude: -79.3832
+# Weather checks, including failed attempts, remain hourly.
