@@ -176,7 +176,7 @@ class TmxTests(unittest.TestCase):
         self.start()
         process, terminal = self.attach()
         for side, position, switch, protocol in (
-            ("left", 1, None, "csi-u"), ("right", 2, b"\x0f", "xterm"),
+            ("left", 1, None, "csi-u"), ("right", 2, b"\x1bo", "xterm"),
         ):
             if switch:
                 os.write(terminal, switch)
@@ -197,7 +197,7 @@ class TmxTests(unittest.TestCase):
         os.write(terminal, b"\x02d")
         self.assertEqual(process.wait(timeout=5), 0)
 
-    def test_ctrl_p_cycles_existing_workspaces_independently_and_wraps(self):
+    def test_option_p_cycles_existing_workspaces_independently_and_wraps(self):
         self.start()
         # Deliberately create sparse workspace numbers out of numeric order.
         for number, side in ((5, "left"), (3, "left"), (4, "left"), (2, "left"), (8, "right"), (7, "right")):
@@ -210,14 +210,14 @@ class TmxTests(unittest.TestCase):
             other_position = 3 - position
             other = self.field("pane_id", f"=tmx:1.{other_position}")
             for number in sequence:
-                os.write(terminal, b"\x10")
+                os.write(terminal, b"\x1bp")
                 self.until(lambda: self.active() == f"{number}:{position}")
                 self.assertEqual(self.mux("list-clients", "-F", "#{client_key_table}"), "root")
                 self.assertEqual(self.field("pane_id", f"=tmx:1.{other_position}"), other)
                 self.assertEqual(self.field("window_panes"), "2")
                 while select.select([terminal], [], [], 0)[0]:
                     os.read(terminal, 65536)
-            os.write(terminal, b"\x0f")
+            os.write(terminal, b"\x1bo")
             self.until(lambda: self.active().endswith(f":{other_position}"))
         self.assertEqual(self.active(), "1:1")
         after = self.mux("list-panes", "-s", "-F", "#{pane_id} #{pane_pid}")
@@ -245,7 +245,7 @@ class TmxTests(unittest.TestCase):
             "list-panes", "-a", "-F", "#{pane_id} #{pane_pid}").splitlines()))
         self.assertNotEqual(self.field("window_id", left), self.field("window_id", right))
 
-    def test_ctrl_p_ignores_stale_tmux_command_context(self):
+    def test_option_p_ignores_stale_tmux_command_context(self):
         self.start()
         self.start("2")
         parked_right = self.field("pane_id", "=tmx:1.2")
@@ -253,14 +253,14 @@ class TmxTests(unittest.TestCase):
         self.mux("select-pane", "-t", "=tmx:1.1")
         right = self.field("pane_id", "=tmx:1.2")
         process, terminal = self.attach()
-        # Force a stale tmux target while retaining the real Ctrl-p command.
+        # Force a stale tmux target while retaining the real Option-p command.
         # A handler trusting this parked right-pane context jumps sides.
-        binding = self.mux("list-keys", "-T", "root", "C-p")
+        binding = self.mux("list-keys", "-T", "root", "M-p")
         binding = binding.replace("run-shell ", "run-shell -t " + parked_right + " ")
         config = self.root / "stale-context.conf"
         config.write_text(binding + "\n")
         self.mux("source-file", str(config))
-        os.write(terminal, b"\x10")
+        os.write(terminal, b"\x1bp")
         self.until(lambda: self.active() == "1:1")
         self.assertEqual(self.field("pane_id", "=tmx:1.2"), right)
         os.write(terminal, b"\x02d")
@@ -284,7 +284,7 @@ class TmxTests(unittest.TestCase):
             self.assertEqual(self.field("@tmx_side", pane), "left" if number < 6 else "right")
         self.assertEqual(self.active(), "8:2")
 
-    def test_ctrl_p_rapid_repeats_keep_both_sides_independent(self):
+    def test_option_p_rapid_repeats_keep_both_sides_independent(self):
         self.start()
         for side in ("left", "right"):
             for number in (("2", "3", "1") if side == "left" else ("7", "8", "6")):
@@ -294,18 +294,18 @@ class TmxTests(unittest.TestCase):
         for position in (1, 2):
             other = self.field("pane_id", f"=tmx:1.{3 - position}")
             for expected in (3, 2, 1, 3, 2, 1):
-                os.write(terminal, b"\x10\x10")
+                os.write(terminal, b"\x1bp\x1bp")
                 self.until(lambda: self.active() == f"{expected + (5 if position == 2 else 0)}:{position}")
                 self.assertEqual(self.field("pane_id", f"=tmx:1.{3 - position}"), other)
                 self.assertEqual(self.field("@tmx_side", "=tmx:1.1"), "left")
                 self.assertEqual(self.field("@tmx_side", "=tmx:1.2"), "right")
                 while select.select([terminal], [], [], 0.01)[0]:
                     os.read(terminal, 65536)
-            os.write(terminal, b"\x0f")
+            os.write(terminal, b"\x1bo")
             self.until(lambda: self.active().endswith(f":{3 - position}"))
         # Interleave pane and workspace shortcuts in one terminal input burst.
         for expected in (2, 3, 1) * 3:
-            os.write(terminal, b"\x10\x0f\x10\x0f")
+            os.write(terminal, b"\x1bp\x1bo\x1bp\x1bo")
             self.until(lambda: self.active() == f"{expected}:1" and
                        self.field("@tmx_workspace", "=tmx:1.2") == str(expected + 5))
             while select.select([terminal], [], [], 0.01)[0]:
@@ -398,7 +398,7 @@ class TmxTests(unittest.TestCase):
         right = self.field("pane_id", "=tmx:1.2")
         left_width = int(self.field("pane_width"))
         for number in (2, 3, 4, 5, 1, 2):
-            view("send-keys", "-t", "=view:", "C-p")
+            view("send-keys", "-t", "=view:", "M-p")
             self.until(lambda: self.active() == f"{number}:1")
             # Wait for the terminal redraw, then check physical column placement.
             left_tabs = " ".join("[●]" if n == number else f"[{n}]" for n in (1, 2, 3, 4, 5))
@@ -414,10 +414,10 @@ class TmxTests(unittest.TestCase):
             self.assertNotIn("\x1b[31m●", ansi.split("┬")[1])
             self.assertEqual(self.field("pane_id", "=tmx:1.2"), right)
         left = self.field("pane_id")
-        view("send-keys", "-t", "=view:", "C-o")
+        view("send-keys", "-t", "=view:", "M-o")
         self.until(lambda: self.active() == "6:2")
         for number in (7, 8, 6):
-            view("send-keys", "-t", "=view:", "C-p")
+            view("send-keys", "-t", "=view:", "M-p")
             self.until(lambda: self.active() == f"{number}:2")
             right_tabs = " ".join("[●]" if n == number else f"[{n - 5}]" for n in (6, 7, 8))
             self.until(lambda: right_tabs in row()[left_width + 1:])
@@ -429,12 +429,12 @@ class TmxTests(unittest.TestCase):
             self.assertNotIn("\x1b[31m●", ansi.split("┬")[0])
             self.assertIn("\x1b[31m●", ansi.split("┬")[1])
 
-    def test_ctrl_p_single_workspace_and_scrollback_preservation(self):
+    def test_option_p_single_workspace_and_scrollback_preservation(self):
         process, terminal = self.scroll_fixture()
         before = self.snapshot()
-        # With one workspace, Ctrl-p is a no-op and the following digit is
+        # With one workspace, Option-p is a no-op and the following digit is
         # ordinary application input, not a lingering workspace prefix.
-        os.write(terminal, b"\x101")
+        os.write(terminal, b"\x1bp1")
         self.until(lambda: (self.root / "input").read_bytes() == b"1")
         self.assertEqual(self.snapshot(), before)
         os.write(terminal, b"\x022")
@@ -447,9 +447,9 @@ class TmxTests(unittest.TestCase):
             self.mux("copy-mode", "-t", "=tmx:1.1")
             self.mux("send-keys", "-t", "=tmx:1.1", "-X", "-N", "3", "scroll-up")
             self.assertEqual(self.field("scroll_position"), "3")
-            os.write(terminal, b"\x10")
+            os.write(terminal, b"\x1bp")
             self.until(lambda: self.active() == "2:1")
-            os.write(terminal, b"\x10")
+            os.write(terminal, b"\x1bp")
             self.until(lambda: self.active() == "1:1")
             self.assertEqual(self.field("pane_in_mode"), "1")
             self.assertEqual(self.field("scroll_position"), "3")
@@ -462,7 +462,7 @@ class TmxTests(unittest.TestCase):
     def test_legacy_digits_and_control_aliases_are_not_workspace_shortcuts(self):
         process, terminal = self.scroll_fixture()
         original = self.snapshot()
-        data = b"123456789\x00\x7f\x1b"
+        data = b"123456789\x00\x7f\x0f\x10\x1b"
         os.write(terminal, data)
         self.until(lambda: (self.root / "input").read_bytes() == data)
         self.assertEqual(self.snapshot(), original)
@@ -792,9 +792,9 @@ with (p / "input").open("ab", buffering=0) as output:
         self.assertEqual(int(self.field("scroll_position")), position)
         self.assertEqual(self.field("pane_in_mode", "=tmx:1.2"), "0")
         # Pane and workspace navigation still work while reading history.
-        os.write(terminal, b"\x0f")
+        os.write(terminal, b"\x1bo")
         self.until(lambda: self.active() == "6:2")
-        os.write(terminal, b"\x0f")
+        os.write(terminal, b"\x1bo")
         self.until(lambda: self.active() == "1:1")
         os.write(terminal, b"\x1b[50;5u")
         self.until(lambda: self.active() == "2:1")
@@ -981,6 +981,120 @@ with (p / "input").open("ab", buffering=0) as output:
         os.write(terminal, b"\x02d")
         self.assertEqual(process.wait(timeout=5), 0)
 
+    def test_option_selection_copy_and_paste_keep_app_processes(self):
+        process, terminal = self.scroll_fixture()
+        before = self.snapshot()
+        expected_input = b""
+        for vertical in (False, True):
+            if vertical:
+                self.assertEqual(self.launch("layout").returncode, 0)
+            os.write(terminal, b"\x1b0")
+            self.until(lambda: self.field("pane_in_mode") == "1")
+            self.mux("send-keys", "-X", "top-line")
+            self.mux("send-keys", "-X", "start-of-line")
+            x = int(self.field("copy_cursor_x"))
+            os.write(terminal, b"\x1b9")
+            for step in range(1, 8):
+                os.write(terminal, b"\x1bl")
+                self.until(lambda: int(self.field("copy_cursor_x")) == x + step)
+            os.write(terminal, b"\x1bc")
+            self.until(lambda: self.field("pane_in_mode") == "0")
+            self.assertEqual(self.mux("show-buffer"), "retained")
+            os.write(terminal, b"\x1bv")
+            expected_input += b"retained"
+            self.until(lambda: (self.root / "input").read_bytes() == expected_input)
+            self.assertEqual(self.snapshot(), before)
+        os.write(terminal, b"\x02d")
+        self.assertEqual(process.wait(timeout=5), 0)
+
+    def test_nano_receives_copy_scroll_and_ctrl_o_p_keys_unchanged(self):
+        for agent in ("nano", "rnano"):
+            with self.subTest(agent=agent):
+                fixture = TmxTests("test_nano_receives_copy_scroll_and_ctrl_o_p_keys_unchanged")
+                fixture.setUp()
+                try:
+                    process, terminal = fixture.scroll_fixture("alternate", agent)
+                    before = fixture.snapshot()
+                    fixture.mux("set-buffer", "tmx sentinel")
+                    expected = b""
+                    keys = (b"\x1b0", b"\x1b9", b"\x1bc", b"\x1bv", b"\x1bi",
+                            b"\x1bk", b"\x1bj", b"\x1bl", b"\x15", b"\x0b", b"\x0f", b"\x10")
+                    for vertical in (False, True):
+                        if vertical:
+                            self.assertEqual(fixture.launch("layout").returncode, 0)
+                        for key in keys:
+                            os.write(terminal, key)
+                            expected += key
+                            fixture.until(lambda: (fixture.root / "input").read_bytes() == expected)
+                            self.assertEqual(fixture.field("pane_in_mode"), "0")
+                        for mode in ("vi", "emacs"):
+                            fixture.mux("set-option", "-w", "mode-keys", mode)
+                            copy_keys = keys[:10] if mode == "vi" else (b"\x1b0", b"\x1bc", b"\x1bi", b"\x1bj", b"\x1bk", b"\x1bl", b"\x15", b"\x0b")
+                            for key in copy_keys:
+                                fixture.mux("copy-mode", "-t", "=tmx:1.1")
+                                os.write(terminal, key)
+                                expected += key
+                                fixture.until(lambda: (fixture.root / "input").read_bytes() == expected)
+                                self.assertEqual(fixture.field("pane_in_mode"), "0")
+                        self.assertEqual(fixture.snapshot(), before)
+                        self.assertEqual(fixture.mux("show-buffer"), "tmx sentinel")
+                finally:
+                    fixture.doCleanups()
+
+    @unittest.skipUnless(shutil.which("nano"), "nano required")
+    def test_real_nano_selection_copy_paste_and_save_use_editor_controls(self):
+        self.start()
+        process, terminal = self.attach()
+        stopped = threading.Event()
+        def drain():
+            try:
+                while not stopped.is_set():
+                    if select.select([terminal], [], [], 0.05)[0]:
+                        if not os.read(terminal, 65536):
+                            return
+            except OSError:
+                pass
+        reader = threading.Thread(target=drain, daemon=True)
+        reader.start()
+        def stop():
+            stopped.set()
+            reader.join(timeout=1)
+        self.addCleanup(stop)
+        file = self.root / "nano.txt"
+        file.write_text("alpha beta\n")
+        command = shlex.join(["nano", "--ignorercfiles", str(file)])
+        self.mux("send-keys", "-t", "=tmx:1.1", command, "Enter")
+        self.until(lambda: self.field("pane_current_command") == "nano")
+        def capture():
+            return self.mux("capture-pane", "-p", "-t", "=tmx:1.1")
+        def writing():
+            screen = capture()
+            return "Write to File" in screen or "File Name to Write" in screen
+        self.until(lambda: "alpha beta" in capture() and "^O Write" in capture())
+        before = self.snapshot()
+        self.mux("set-buffer", "tmx sentinel")
+        os.write(terminal, b"\x0f")
+        self.until(writing)
+        os.write(terminal, b"\x03")
+        self.mux("send-keys", "-t", "=tmx:1.1", "M-a", "Right", "Right", "Right", "Right", "Right", "M-6", "End")
+        os.write(terminal, b"\x15")
+        self.until(lambda: "alpha betaalpha" in capture())
+        os.write(terminal, b"\x1bv")
+        self.until(lambda: "Verbatim Input" in capture())
+        os.write(terminal, b"263a\r")
+        self.until(lambda: "alpha betaalpha☺" in capture())
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.mux("show-buffer"), "tmx sentinel")
+        self.assertEqual(self.field("pane_in_mode"), "0")
+        os.write(terminal, b"\x0f")
+        self.until(writing)
+        os.write(terminal, b"\r")
+        self.until(lambda: file.read_text() == "alpha betaalpha☺\n")
+        os.write(terminal, b"\x18")
+        self.until(lambda: self.field("pane_current_command") != "nano")
+        os.write(terminal, b"\x02d")
+        self.assertEqual(process.wait(timeout=5), 0)
+
     def test_option_codex_wheel_accelerates_both_directions_after_two_seconds(self):
         self.check_scroll_acceleration("alternate", (b"\x1bi", b"\x1bk"))
 
@@ -1086,7 +1200,7 @@ with (p / "input").open("ab", buffering=0) as output:
         self.mux("send-keys", "-t", "=tmx:1.2",
                  shlex.join([sys.executable, str(script), str(other)]), "Enter")
         self.until(lambda: self.field("pane_current_command", "=tmx:1.2").startswith("python"))
-        os.write(terminal, b"\x0f")
+        os.write(terminal, b"\x1bo")
         self.until(lambda: self.active() == "6:2")
         os.write(terminal, b"\x11")
         self.until(other.exists)

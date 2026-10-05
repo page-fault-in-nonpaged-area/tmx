@@ -12,16 +12,17 @@ Usage: tmx [1-8] | tmx --detached [1-8] | tmx list | tmx history
 tmx reconnects to your last workspace and active pane.
 Workspaces 1-5 belong to the left; 6-8 belong to the right.
 
-Ctrl-p            next existing workspace in focused side, wrapping around
 Ctrl-b then 1-8    create/select an exact workspace on its assigned side
-Ctrl-o            next pane, wrapping from right to left
 Ctrl-u / Ctrl-k   scroll up / down (hold 2 seconds to accelerate)
 Option-i / k      scroll up / down outside copy mode (Escape + i/k)
 Option-o / p      next pane / next workspace (Escape + o/p)
 Option-r          terminate focused workspace and open a fresh shell
 Option-y          toggle stacked panes (left on top, right below)
 Option-0          enter copy mode; q returns to the running application
+Option-9 / c      start selection / copy selection and exit copy mode
+Option-v          paste the tmux buffer
 Option-i/j/k/l     copy-mode cursor: up/left/down/right
+                  copy/scroll shortcuts pass through when nano is active
 Ctrl-q            send Shift+Left in Codex; ordinary Ctrl-q elsewhere
 Ctrl-b then t      send a literal Tab to the application
 Ctrl-b then o      switch between left and right panes
@@ -590,7 +591,7 @@ EOF
         # exceed the cap. Existing workspaces always remain selectable.
         if [ "$side" = left ]; then side_limit=5; else side_limit=3; fi
         if [ "$side_count" -ge "$side_limit" ]; then
-            message="$side already has $side_limit workspaces; Ctrl-p cycles existing workspaces"
+            message="$side already has $side_limit workspaces; Option-p cycles existing workspaces"
             if [ "$action" = workspace ]; then
                 mux display-message -t "$current" "tmx: $message"
                 exit 0

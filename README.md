@@ -113,7 +113,7 @@ focused side, running programs and retained history. Run any program, including
 left pane. On the first launch, `tmx 3` starts left:3 and right:6.
 
 A session registry anchors each workspace number to its stable tmux pane ID.
-Ctrl-p resolves the currently focused terminal in the permanent visible window
+Option-p resolves the currently focused terminal in the permanent visible window
 under the workspace lock, rather than trusting tmux's potentially parked key
 context. Visible left/right positions must match the registry before anything
 moves. Shell respawns retain the same pane ID and workspace assignment.
@@ -128,13 +128,13 @@ layout keeps its left IDs and moves right IDs 4/5/6 to 6/7/8 without changing
 pane IDs, processes or focus. Sparse IDs stay sparse. Older overlapping labels
 are assigned in numeric order within their side.
 
-Press **Ctrl-o** to cycle forward through the two panes: left → right → left.
-Press **Ctrl-p** to cycle forward through the **existing workspaces in the
+Press **Option-o** to cycle forward through the two panes: left → right → left.
+Press **Option-p** to cycle forward through the **existing workspaces in the
 focused pane**, in numeric order, wrapping back to the lowest number. For
 example, a full left side cycles 1 → 2 → 3 → 4 → 5 → 1 and the right cycles
 6 → 7 → 8 → 6.
 Missing workspaces are skipped. The other side stays
-unchanged. If the side has only one workspace, Ctrl-p stays there; it never
+unchanged. If the side has only one workspace, Option-p stays there; it never
 creates new workspaces.
 
 Press **Ctrl-b**, release it, then **1–8** to create or select an exact workspace
@@ -146,13 +146,14 @@ Detection uses the same foreground-process classifier as scrolling, including
 the Node-based Codex launcher. Ctrl-b then q/w remains available in every app.
 
 Press **Ctrl-u** to scroll up and **Ctrl-k** to scroll down, with no prefix.
-**Option-i/k** scroll up/down outside copy mode, **Option-o** cycles panes, and **Option-p** cycles
-existing workspaces on the focused side. These aliases handle Escape followed
+**Option-i/k** scroll up/down outside copy mode, **Option-o** cycles panes, and
+**Option-p** cycles existing workspaces on the focused side. These keys handle Escape followed
 by the letter (`^[i`, `^[k`, `^[o`, `^[p`), including when your physical Ctrl key
 has been configured to send Option. Pane/workspace navigation works in retained
 history too. In copy mode, Option-i/j/k/l instead move the cursor up/left/down/right
 using native tmux controls. The original Ctrl
-shortcuts remain available. This does not remap the physical keyboard; Ctrl-b
+scroll shortcuts remain available; Ctrl-o/p pass through outside copy mode.
+This does not remap the physical keyboard; Ctrl-b
 and Ctrl-q still require their original Ctrl sequences.
 **Option-r** (`^[r`, or your remapped Ctrl+r) terminates the focused workspace's
 running shell/program and opens a fresh shell in its current directory. It keeps
@@ -182,12 +183,21 @@ not match agent names in prompt arguments or unrelated background processes.
 PageUp/PageDown injection has been removed. Unrecognized fullscreen programs,
 Muse in an unverified fullscreen mode, and Claude fullscreen without mouse
 reporting show an unsupported-view message instead of receiving guessed keys.
-**Option-0** enters tmux copy mode in the focused pane, regardless of the app.
+**Option-0** enters tmux copy mode in the focused pane, except when nano is active.
 It requires no prefix or arrow key; `q` exits back to the running application.
+**Option-9** starts a selection; move with Option-i/j/k/l, then **Option-c**
+copies the selection into tmux's buffer and exits copy mode. **Option-v** pastes
+that buffer into the focused application, using bracketed paste when supported.
+This buffer belongs to the private tmx server; it is not the iOS clipboard.
 In copy mode, **Option-i** moves up, **Option-k** down, **Option-j** left and
 **Option-l** right, including while extending a selection. Holding the keys
 repeats movement at the keyboard's normal repeat rate. Ctrl-u/k remain available
 for accelerated history scrolling.
+When nano (or restricted nano, `rnano`) is the foreground program, these copy
+and scrolling shortcuts pass through to the editor, including Ctrl-u/k. Nano's
+own selection, cutbuffer and verbatim-input commands remain available. If a
+tmux history view was opened manually, using these keys leaves it first.
+Pane/workspace switching, reset and layout shortcuts remain tmx controls.
 Ctrl-b then `u` explicitly opens retained terminal history regardless of app.
 While in that history, `q` exits and scrolling down to the bottom with Ctrl-k
 returns live. Option-k moves the cursor without leaving copy mode.
@@ -233,9 +243,9 @@ future versions, and mouse handling inside dialogs may differ.
 **Ctrl-i and Tab send the same byte on legacy terminals**, even with separate
 physical keys. That byte passes through as Tab. Ctrl-i is no longer a scroll
 shortcut; Ctrl-u avoids the ambiguity and works on iSH. **Ctrl-b then `t`** also
-sends a literal Tab. Ctrl-u and Ctrl-k are consumed for scrolling rather than
-forwarded to the application. Ctrl-p cycles existing workspaces in the focused
-side; Ctrl-o changes which side is focused.
+sends a literal Tab. Ctrl-u and Ctrl-k scroll history, except in nano where
+they pass through to the editor. Option-p cycles existing workspaces in the focused
+side; Option-o changes which side is focused.
 
 | Keys (press Ctrl-b, release, then the next key) | Action |
 | --- | --- |
@@ -248,8 +258,8 @@ side; Ctrl-o changes which side is focused.
 | `r` | Retry opening a shell if automatic reopening failed; never replaces a live process |
 | `?` | Show shortcuts |
 
-The **Ctrl-p** and **Ctrl-b then digit** shortcuts use ordinary control and number
-characters, so they do not depend on a keyboard supporting Ctrl+number chords. Direct Ctrl+1–8 also remain available for
+The **Option-p** and **Ctrl-b then digit** shortcuts use Escape-letter or prefix
+sequences, so they do not depend on a keyboard supporting Ctrl+number chords. Direct Ctrl+1–8 also remain available for
 terminals that send distinct CSI-u or xterm modifyOtherKeys sequences, but are
 not required. The wrapper never maps ordinary digits outside the prefix,
 Escape, NUL or Backspace to workspace switching.
