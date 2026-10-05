@@ -136,6 +136,13 @@ has been configured to send Option. They work in retained history too, with the
 same repeat acceleration and no additional helper processes. The original Ctrl
 shortcuts remain available. This does not remap the physical keyboard; Ctrl-b
 and Ctrl-q still require their original Ctrl sequences.
+**Option-r** (`^[r`, or your remapped Ctrl+r) terminates the focused workspace's
+running shell/program and opens a fresh shell in its current directory. It keeps
+the same pane ID, side and workspace number; other workspaces keep running. This
+also works while reading history. `tmx reset` performs the same action. Reset
+discards that workspace's shell variables and terminal history and does not
+automatically rerun the terminated program. Ctrl-b then r remains the safe retry
+for an already exited workspace.
 Ordinary **Tab** goes directly to the application for completion/navigation.
 Holding either key repeats scrolling when the keyboard/iSH sends key repeats;
 the launcher does not invent a continuous timer without key-release events.

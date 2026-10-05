@@ -7,7 +7,7 @@ die() { printf 'tmx: %s\n' "$*" >&2; exit 2; }
 usage() {
     cat <<'EOF'
 Usage: tmx [1-6] | tmx --detached [1-6] | tmx list | tmx history
-       tmx app | tmx run codex [Codex arguments]
+       tmx app | tmx reset | tmx run codex [Codex arguments]
 
 tmx reconnects to your last workspace and active pane.
 Workspaces 1-3 belong to the left; 4-6 belong to the right.
@@ -18,6 +18,7 @@ Ctrl-o            next pane, wrapping from right to left
 Ctrl-u / Ctrl-k   scroll up / down (hold 2 seconds to accelerate)
 Option-i / k      scroll up / down (Escape + i/k)
 Option-o / p      next pane / next workspace (Escape + o/p)
+Option-r          terminate focused workspace and open a fresh shell
 Ctrl-q            send Shift+Left in Codex; ordinary Ctrl-q elsewhere
 Ctrl-b then t      send a literal Tab to the application
 Ctrl-b then o      switch between left and right panes
@@ -150,6 +151,37 @@ if [ "${1-}" = reopen ]; then
     start_dir=$(mux display-message -p -t "$pane" '#{pane_start_path}')
     [ -d "$start_dir" ] || start_dir=$HOME
     mux respawn-pane -t "$pane" -c "$start_dir" /bin/bash -l \; \
+        set-option -pu -t "$pane" @tmx_scroll_state
+    exit 0
+fi
+
+# Explicitly reset only the workspace visible and focused at dispatch time.
+# Share the workspace lock so an earlier queued swap cannot redirect the reset
+# to a parked terminal. The automatic reopen hook never kills a live process.
+if [ "${1-}" = reset ]; then
+    [ "$#" -eq 1 ] || die 'reset takes no arguments; it resets the focused workspace'
+    state=${XDG_STATE_HOME:-$HOME/.local/state}/tmx
+    mkdir -p "$state"
+    exec 9>"$state/$TMX_SOCKET.lock"
+    flock -x 9
+    main=$(mux show-option -qv -t '=tmx:' @tmx_main_window 2>/dev/null || :)
+    [ -n "$main" ] || exit 0
+    details=$(mux display-message -p -t "$main" '#{session_name} #{window_id} #{pane_id} #{@tmx_side} #{@tmx_workspace}
+#{pane_current_path}')
+    header=${details%%'
+'*}
+    start_dir=${details#*'
+'}
+    read -r session window pane owner number <<EOF
+$header
+EOF
+    [ "$session" = tmx ] && [ "$window" = "$main" ] || die 'cannot resolve visible workspace'
+    case $owner:$number in left:[1-3]|right:[4-6]) ;; *) die 'invalid workspace ownership; leaving terminal untouched' ;; esac
+    registered=$(mux show-option -qv -t '=tmx:' "@tmx_workspace_$number")
+    [ "$registered" = "$pane" ] || die 'workspace registry mismatch; leaving terminal untouched'
+    [ -d "$start_dir" ] || start_dir=$HOME
+    mux respawn-pane -k -t "$pane" -c "$start_dir" /bin/bash -l \; \
+        clear-history -t "$pane" \; \
         set-option -pu -t "$pane" @tmx_scroll_state
     exit 0
 fi

@@ -519,6 +519,86 @@ class TmxTests(unittest.TestCase):
         self.assertEqual(self.active(), focus)
         self.assertEqual(len(self.snapshot().splitlines()), 3)
 
+    def test_option_r_resets_only_focused_workspace_in_all_key_tables(self):
+        self.start()
+        for number in (2, 3, 5, 6):
+            self.assertEqual(self.launch("workspace", str(number)).returncode, 0)
+        process, terminal = self.attach()
+        directory = self.root / "current directory"
+        directory.mkdir()
+        marker = self.root / "foreground"
+        for number, mode in ((2, "root"), (5, "copy-mode"), (3, "copy-mode-vi")):
+            with self.subTest(workspace=number, table=mode):
+                self.assertEqual(self.launch("workspace", str(number)).returncode, 0)
+                pane = self.field("pane_id", "=tmx:")
+                child = f'echo $$ > {shlex.quote(str(marker))}; exec sleep 600'
+                command = (f'export TMX_RESET_VALUE=old; cd {shlex.quote(str(directory))}; '
+                           f'printf "RESET_HISTORY\\n"; sh -c {shlex.quote(child)}')
+                marker.unlink(missing_ok=True)
+                self.mux("send-keys", "-t", pane, command, "Enter")
+                self.until(lambda: marker.exists() and marker.stat().st_size > 0
+                           and self.field("pane_current_command", pane) == "sleep")
+                child_pid = marker.read_text().strip()
+                before = self.mux("list-panes", "-s", "-F", "#{pane_id} #{pane_pid}").splitlines()
+                old_pid = self.field("pane_pid", pane)
+                focus = self.active()
+                self.mux("set-option", "-p", "-t", pane, "@tmx_scroll_state", "stale")
+                if mode != "root":
+                    self.mux("set-option", "-w", "mode-keys", "vi" if mode.endswith("-vi") else "emacs")
+                    self.mux("copy-mode", "-t", pane)
+                    self.until(lambda: self.field("pane_in_mode", pane) == "1")
+                os.write(terminal, b"\x1br")
+                self.until(lambda: self.field("pane_pid", pane) != old_pid
+                           and self.field("pane_current_command", pane) == "bash")
+                self.assertEqual(self.active(), focus)
+                self.assertEqual(self.field("pane_dead", pane), "0")
+                self.assertEqual(self.field("pane_in_mode", pane), "0")
+                self.assertEqual(self.field("@tmx_scroll_state", pane), "")
+                self.assertEqual(self.field("pane_current_path", pane), str(directory))
+                self.assertEqual(self.field("history_size", pane), "0")
+                after = self.mux("list-panes", "-s", "-F", "#{pane_id} #{pane_pid}").splitlines()
+                self.assertEqual(sorted(line for line in before if not line.startswith(pane + " ")),
+                                 sorted(line for line in after if not line.startswith(pane + " ")))
+                def child_stopped():
+                    try:
+                        state = Path(f"/proc/{child_pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
+                        return state == "Z"
+                    except FileNotFoundError:
+                        return True
+                self.until(child_stopped)
+                value = self.root / f"value-{number}"
+                self.mux("send-keys", "-t", pane,
+                         f'printf "%s" "${{TMX_RESET_VALUE-unset}}" > {value}', "Enter")
+                self.until(value.exists)
+                self.assertEqual(value.read_text(), "unset")
+                while select.select([terminal], [], [], 0)[0]:
+                    os.read(terminal, 65536)
+        os.write(terminal, b"\x02d")
+        self.assertEqual(process.wait(timeout=5), 0)
+
+    def test_reset_ignores_parked_tmux_context(self):
+        self.start()
+        parked = self.field("pane_id")
+        self.assertEqual(self.launch("workspace", "2").returncode, 0)
+        visible = self.field("pane_id")
+        before = self.mux("list-panes", "-s", "-F", "#{pane_id} #{pane_pid}").splitlines()
+        old_pid = self.field("pane_pid", visible)
+        self.mux("run-shell", "-t", parked, f'{shlex.quote(str(SCRIPT))} reset')
+        self.until(lambda: self.field("pane_pid", visible) != old_pid)
+        self.assertEqual(self.active(), "2:1")
+        after = self.mux("list-panes", "-s", "-F", "#{pane_id} #{pane_pid}").splitlines()
+        self.assertEqual(sorted(line for line in before if not line.startswith(visible + " ")),
+                         sorted(line for line in after if not line.startswith(visible + " ")))
+
+    def test_reset_refuses_workspace_registry_mismatch(self):
+        self.start()
+        before = self.snapshot()
+        self.mux("set-option", "-t", "=tmx:", "@tmx_workspace_1", self.field("pane_id", "=tmx:1.2"))
+        result = self.launch("reset")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("registry mismatch", result.stderr)
+        self.assertEqual(self.snapshot(), before)
+
     def test_fixed_ranges_bound_workspace_count_under_concurrency(self):
         self.start()
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
