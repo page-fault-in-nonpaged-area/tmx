@@ -20,6 +20,7 @@ Option-i / k      scroll up / down (Escape + i/k)
 Option-o / p      next pane / next workspace (Escape + o/p)
 Option-r          terminate focused workspace and open a fresh shell
 Option-y          toggle stacked panes (left on top, right below)
+Option-0          enter copy mode; q returns to the running application
 Ctrl-q            send Shift+Left in Codex; ordinary Ctrl-q elsewhere
 Ctrl-b then t      send a literal Tab to the application
 Ctrl-b then o      switch between left and right panes

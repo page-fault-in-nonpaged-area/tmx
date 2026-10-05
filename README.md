@@ -181,6 +181,8 @@ not match agent names in prompt arguments or unrelated background processes.
 PageUp/PageDown injection has been removed. Unrecognized fullscreen programs,
 Muse in an unverified fullscreen mode, and Claude fullscreen without mouse
 reporting show an unsupported-view message instead of receiving guessed keys.
+**Option-0** enters tmux copy mode in the focused pane, regardless of the app.
+It requires no prefix or arrow key; `q` exits back to the running application.
 Ctrl-b then `u` explicitly opens retained terminal history regardless of app.
 While in that history, `q` exits and scrolling down to the bottom returns live.
 Ctrl-k at the ordinary live bottom does nothing.
