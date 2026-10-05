@@ -424,7 +424,7 @@ class TmxTests(unittest.TestCase):
         process, terminal = self.scroll_fixture()
         original = self.field("pane_id")
         other = self.field("pane_id", "=tmx:1.2")
-        os.write(terminal, b"\x09")
+        os.write(terminal, b"\x1b[105;5u")
         self.until(lambda: self.field("scroll_position") == "1")
         os.write(terminal, b"\x1b[50;5u")  # Ctrl+2 while in copy mode.
         self.until(lambda: self.active() == "2:1")
@@ -608,15 +608,42 @@ with (p / "input").open("ab", buffering=0) as output:
     def field(self, name, target="=tmx:1.1"):
         return self.mux("display-message", "-p", "-t", target, "#{" + name + "}")
 
+    def test_plain_tab_passes_through_and_extended_ctrl_i_still_scrolls(self):
+        for mode, agent in (("inline", "codex"), ("alternate", "codex"),
+                            ("sgr", "claude"), ("inline", "muse")):
+            with self.subTest(mode=mode, agent=agent):
+                # Separate fixtures keep every input recorder initially empty.
+                fixture = TmxTests("test_plain_tab_passes_through_and_extended_ctrl_i_still_scrolls")
+                fixture.setUp()
+                try:
+                    process, terminal = fixture.scroll_fixture(mode, agent)
+                    os.write(terminal, b"\x09")
+                    fixture.until(lambda: (fixture.root / "input").read_bytes() == b"\x09")
+                    self.assertEqual(fixture.field("pane_in_mode"), "0")
+                    os.write(terminal, b"\x1b[105;5u")
+                    if mode == "inline":
+                        fixture.until(lambda: fixture.field("scroll_position") == "1")
+                        self.assertEqual((fixture.root / "input").read_bytes(), b"\x09")
+                        # Tab must not become scroll-up in either history table.
+                        for table in ("copy-mode", "copy-mode-vi"):
+                            self.assertNotRegex(fixture.mux("list-keys", "-T", table), r"-T copy-mode(?:-vi)?\s+Tab\s")
+                    else:
+                        column = (int(fixture.field("pane_width")) + 1) // 2
+                        row = (int(fixture.field("pane_height")) + 1) // 2
+                        expected = b"\x09" + f"\x1b[<64;{column};{row}M".encode()
+                        fixture.until(lambda: (fixture.root / "input").read_bytes() == expected)
+                finally:
+                    fixture.doCleanups()
+
     def test_scroll_history_repeats_bottom_and_pane_workspace_isolation(self):
         process, terminal = self.scroll_fixture()
-        os.write(terminal, b"\x09")  # Ctrl-i / Tab.
+        os.write(terminal, b"\x1b[105;5u")  # Distinct extended Ctrl-i.
         self.until(lambda: self.field("scroll_position") == "1")
         for _ in range(10):
-            os.write(terminal, b"\x09")
+            os.write(terminal, b"\x1b[105;5u")
             time.sleep(0.02)  # Hardware-style typematic repeat.
         # SSH may deliver accumulated hardware repeats in a single packet.
-        os.write(terminal, b"\x09" * 4)
+        os.write(terminal, b"\x1b[105;5u" * 4)
         time.sleep(0.15)
         position = int(self.field("scroll_position"))
         self.assertGreaterEqual(position, 1)
@@ -657,7 +684,7 @@ with (p / "input").open("ab", buffering=0) as output:
                 return int(self.field("scroll_position"))
             return (self.root / "input").read_bytes().count(b"M")
 
-        for key in (b"\x09", b"\x0b"):
+        for key in (b"\x1b[105;5u", b"\x0b"):
             with self.subTest(mode=mode, direction=key):
                 # Feed real client bytes for over two seconds, not mocked clocks.
                 start = time.monotonic()
@@ -710,14 +737,14 @@ with (p / "input").open("ab", buffering=0) as output:
         row = (int(self.field("pane_height")) + 1) // 2
         up = f"\x1b[<64;{column};{row}M".encode()
         down = f"\x1b[<65;{column};{row}M".encode()
-        os.write(terminal, b"\x09")
+        os.write(terminal, b"\x1b[105;5u")
         self.until(lambda: (self.root / "input").read_bytes() == up)
         os.write(terminal, b"\x0b")
         self.until(lambda: (self.root / "input").read_bytes() == up + down)
         self.assertEqual(self.field("pane_in_mode"), "0")
         # Explicit tmux history takes precedence even if the TUI wants the mouse.
         self.mux("copy-mode", "-t", "=tmx:1.1")
-        os.write(terminal, b"\x09")
+        os.write(terminal, b"\x1b[105;5u")
         self.until(lambda: self.field("scroll_position") == "1")
         self.assertEqual((self.root / "input").read_bytes(), up + down)
         os.write(terminal, b"q")
@@ -732,7 +759,7 @@ with (p / "input").open("ab", buffering=0) as output:
         row = min(95, (int(self.field("pane_height")) + 1) // 2)
         up = b"\x1b[M" + bytes((96, column + 32, row + 32))
         down = b"\x1b[M" + bytes((97, column + 32, row + 32))
-        os.write(terminal, b"\x09")
+        os.write(terminal, b"\x1b[105;5u")
         self.until(lambda: (self.root / "input").read_bytes() == up)
         os.write(terminal, b"\x0b")
         self.until(lambda: (self.root / "input").read_bytes() == up + down)
@@ -749,11 +776,11 @@ with (p / "input").open("ab", buffering=0) as output:
         os.write(terminal, b"\x1b[105;5u")  # Distinct extended Ctrl-i.
         self.until(lambda: (self.root / "input").read_bytes() == up)
         for _ in range(4):
-            os.write(terminal, b"\x09")
+            os.write(terminal, b"\x1b[105;5u")
             time.sleep(0.03)
         self.assertEqual((self.root / "input").read_bytes(), up)
         time.sleep(0.8)
-        os.write(terminal, b"\x09")
+        os.write(terminal, b"\x1b[105;5u")
         self.until(lambda: (self.root / "input").read_bytes() == up + up)
         os.write(terminal, b"\x0b")
         self.until(lambda: (self.root / "input").read_bytes() == up + up + down)
@@ -764,7 +791,7 @@ with (p / "input").open("ab", buffering=0) as output:
     def test_unknown_fullscreen_does_not_receive_guessed_keys(self):
         process, terminal = self.scroll_fixture("alternate", agent="unknown-tui")
         self.assertEqual(self.launch("app").stdout.strip(), "other")
-        os.write(terminal, b"\x09\x0b")
+        os.write(terminal, b"\x1b[105;5u\x0b")
         time.sleep(0.2)
         self.assertEqual((self.root / "input").read_bytes(), b"")
         self.assertEqual(self.field("pane_in_mode"), "0")
@@ -774,7 +801,7 @@ with (p / "input").open("ab", buffering=0) as output:
     def test_claude_without_mouse_does_not_receive_guessed_keys(self):
         process, terminal = self.scroll_fixture("alternate", agent="claude")
         self.assertEqual(self.launch("app").stdout.strip(), "claude")
-        os.write(terminal, b"\x09\x0b")
+        os.write(terminal, b"\x1b[105;5u\x0b")
         time.sleep(0.2)
         self.assertEqual((self.root / "input").read_bytes(), b"")
         os.write(terminal, b"\x02d")
@@ -783,7 +810,7 @@ with (p / "input").open("ab", buffering=0) as output:
     def test_versioned_muse_binary_is_detected(self):
         process, terminal = self.scroll_fixture(agent="muse-bin-1.4.0")
         self.assertEqual(self.launch("app").stdout.strip(), "muse")
-        os.write(terminal, b"\x09")
+        os.write(terminal, b"\x1b[105;5u")
         self.until(lambda: self.field("scroll_position") == "1")
         os.write(terminal, b"q")
         self.until(lambda: self.field("pane_in_mode") == "0")

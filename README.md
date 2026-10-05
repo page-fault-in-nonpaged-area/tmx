@@ -128,7 +128,9 @@ Press **Ctrl-q** to send **Shift+Left** when the focused pane is running Codex
 Detection uses the same foreground-process classifier as scrolling, including
 the Node-based Codex launcher. Ctrl-b then q/w remains available in every app.
 
-Press **Ctrl-i** to scroll up and **Ctrl-k** to scroll down, with no prefix.
+Press **Ctrl-i** to scroll up when your terminal sends distinct extended input,
+and **Ctrl-k** to scroll down, with no prefix. Ordinary **Tab** goes directly to
+the application for completion/navigation.
 Holding either key repeats scrolling when the keyboard/iSH sends key repeats;
 the launcher does not invent a continuous timer without key-release events.
 Scrolling applies only to the active pane. App-specific handlers target exactly
@@ -190,9 +192,11 @@ on this host: its handler is documentation-backed and tested against protocol
 fixtures, not qualified against a live Claude process. Customized app bindings,
 future versions, and mouse handling inside dialogs may differ.
 
-**Ctrl-i and Tab normally send the same byte**, even with separate physical keys.
-Both therefore activate scrolling on legacy terminals. **Ctrl-b then `t`** sends
-a literal Tab to the application for completion/navigation. Ctrl-k is also
+**Ctrl-i and Tab send the same byte on legacy terminals**, even with separate
+physical keys. That byte is passed through as Tab. Ctrl-i scrolls only when the
+terminal sends a distinct extended sequence; tmx requests extended input but
+cannot make an unsupported terminal distinguish the keys. **Ctrl-b then `t`**
+also sends a literal Tab. Ctrl-k is still
 consumed rather than forwarded to the application. Ctrl-p cycles existing workspaces in the focused side;
 Ctrl-o changes which side is focused.
 
