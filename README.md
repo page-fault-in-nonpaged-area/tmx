@@ -42,8 +42,11 @@ When disk and weather are both disabled, no status worker starts.
 own set of workspaces: **at most three on the left/top (1–3)** and **three on the
 right (6–8)**. Numbers are global: selecting 2 always changes the left;
 selecting 7 always changes the right, regardless of the current focus.
-The limits include inactive workspaces. New shells are created only when their
-workspace is selected, so increasing the limit does not start extra processes.
+Every launch prepares all six workspaces as blank shells, including the four
+background terminals. Option-p can cycle immediately; Ctrl-b is needed only
+for direct selection. Reconnecting reuses existing terminals and fills missing
+slots without changing the current view or focus. The limits include inactive
+workspaces.
 The left bar displays labels 1–3; the right bar displays 1–3. On the right these
 represent fixed workspace IDs 6–8; only the displayed labels change.
 Ctrl-b + 6/7/8 selects the right-hand workspaces.

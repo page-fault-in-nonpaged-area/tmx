@@ -86,27 +86,113 @@ class TmxTests(unittest.TestCase):
         except OSError:
             pass
 
+    def remove_workspace(self, number):
+        """Remove a blank slot in this isolated test server, including its registry."""
+        pane = self.mux("show-option", "-qv", "-t", "=tmx:", f"@tmx_workspace_{number}")
+        self.mux("kill-pane", "-t", pane,
+                 ";", "set-option", "-qu", "-t", "=tmx:", f"@tmx_workspace_{number}")
+
     def test_sh_bash_workspace_creation_and_reuse(self):
         self.start("3")
         first = self.snapshot()
-        self.assertEqual(len(first.splitlines()), 2)
+        self.assertEqual(len(first.splitlines()), 6)
         self.assertEqual(self.active(), "3:1")
         self.assertEqual(self.launch("--detached", shell="bash").returncode, 0)
         self.assertEqual(first, self.snapshot())
         self.start("2")
-        self.assertEqual(len(self.snapshot().splitlines()), 3)
+        self.assertEqual(len(self.snapshot().splitlines()), 6)
         self.assertEqual(self.field("@tmx_workspace", "=tmx:1.2"), "6")
         self.start("3")
         self.assertEqual(self.active(), "3:1")
-        self.assertEqual(self.snapshot().splitlines()[:2], first.splitlines())
+        self.assertEqual(self.snapshot(), first)
 
     def test_concurrent_first_launch_and_workspace_creation(self):
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
             results = list(executor.map(lambda _: self.launch("--detached", "2"), range(4)))
         for result in results:
             self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len(self.snapshot().splitlines()), 2)
+        self.assertEqual(len(self.snapshot().splitlines()), 6)
         self.assertEqual(self.active(), "2:1")
+
+    def test_launch_readies_all_six_workspaces_for_immediate_option_p_cycling(self):
+        self.start()
+        before = sorted(self.mux("list-panes", "-s", "-F", "#{pane_id} #{pane_pid}").splitlines())
+        self.assertEqual(len(before), 6)
+        for number in (1, 2, 3, 6, 7, 8):
+            pane = self.field(f"@tmx_workspace_{number}")
+            self.assertEqual(self.field("@tmx_workspace", pane), str(number))
+            self.assertEqual(self.field("@tmx_side", pane), "left" if number < 6 else "right")
+            self.until(lambda: self.field("pane_current_command", pane) == "bash")
+        self.assertEqual(self.active(), "1:1")
+        process, terminal = self.attach()
+        for position, sequence in ((1, (2, 3, 1)), (2, (7, 8, 6))):
+            other = self.field("pane_id", f"=tmx:1.{3 - position}")
+            for number in sequence:
+                os.write(terminal, b"\x1bp")
+                self.until(lambda: self.active() == f"{number}:{position}")
+                self.assertEqual(self.field("pane_id", f"=tmx:1.{3 - position}"), other)
+                while select.select([terminal], [], [], 0)[0]:
+                    os.read(terminal, 65536)
+            os.write(terminal, b"\x1bo")
+            self.until(lambda: self.active().endswith(f":{3 - position}"))
+        self.assertEqual(self.active(), "1:1")
+        self.assertEqual(sorted(self.mux("list-panes", "-s", "-F", "#{pane_id} #{pane_pid}").splitlines()), before)
+        os.write(terminal, b"\x02d")
+        self.assertEqual(process.wait(timeout=5), 0)
+
+    def test_relaunch_fills_missing_slots_and_preserves_focus_modes_and_shell_state(self):
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                fixture = TmxTests("test_sh_bash_workspace_creation_and_reuse")
+                fixture.setUp()
+                try:
+                    fixture.start("8")
+                    if vertical:
+                        self.assertEqual(fixture.launch("layout").returncode, 0)
+                    focus = fixture.field("pane_id", "=tmx:")
+                    left = fixture.field("pane_id")
+                    fixture.mux("copy-mode", "-t", left)
+                    directory = fixture.root / "shell directory"
+                    directory.mkdir()
+                    fixture.mux("send-keys", "-t", focus,
+                                'TMX_READY=retained; cd ' + shlex.quote(str(directory)), "Enter")
+                    fixture.until(lambda: fixture.field("pane_current_path", focus) == str(directory))
+                    fixture.remove_workspace(2)
+                    fixture.remove_workspace(7)
+                    fmt = "#{pane_id} #{pane_pid} #{window_id} #{pane_in_mode} #{pane_width} #{pane_height}"
+                    before = set(fixture.mux("list-panes", "-s", "-F", fmt).splitlines())
+                    fixture.start()
+                    self.assertTrue(before.issubset(fixture.mux("list-panes", "-s", "-F", fmt).splitlines()))
+                    self.assertEqual(fixture.active(), "8:2")
+                    self.assertEqual(fixture.field("pane_id", "=tmx:"), focus)
+                    self.assertEqual(fixture.field("pane_in_mode", left), "1")
+                    self.assertEqual(fixture.field("window_panes"), "2")
+                    self.assertEqual(len(fixture.snapshot().splitlines()), 6)
+                    created = fixture.field("@tmx_workspace_7")
+                    fixture.until(lambda: fixture.field("pane_current_path", created) == str(directory))
+                    self.assertEqual(fixture.field("pane_width", created), fixture.field("pane_width", focus))
+                    self.assertEqual(fixture.field("pane_height", created), fixture.field("pane_height", focus))
+                    marker = fixture.root / "ready-marker"
+                    fixture.mux("send-keys", "-t", focus,
+                                f'printf "%s" "$TMX_READY" > {marker}', "Enter")
+                    fixture.until(marker.exists)
+                    self.assertEqual(marker.read_text(), "retained")
+                    after = fixture.snapshot()
+                    fixture.start()
+                    self.assertEqual(fixture.snapshot(), after)
+                finally:
+                    fixture.doCleanups()
+
+    def test_launch_refuses_invalid_registry_without_creating_missing_slots(self):
+        self.start()
+        self.remove_workspace(2)
+        self.mux("set-option", "-t", "=tmx:", "@tmx_workspace_6", self.field("pane_id"))
+        before = self.snapshot()
+        result = self.launch("--detached")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("registry mismatch", result.stderr)
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.field("@tmx_workspace_2"), "")
 
     def test_abrupt_disconnect_preserves_processes_focus_and_shell_state(self):
         self.start("6")
@@ -134,7 +220,7 @@ class TmxTests(unittest.TestCase):
         process, terminal = self.attach()
         os.write(terminal, b"\x022")
         self.until(lambda: self.active() == "2:1")
-        self.assertEqual(len(self.snapshot().splitlines()), 3)
+        self.assertEqual(len(self.snapshot().splitlines()), 6)
         right = self.field("pane_id", "=tmx:1.2")
         os.write(terminal, b"\x02o")
         self.until(lambda: self.active() == "6:2")
@@ -199,7 +285,7 @@ class TmxTests(unittest.TestCase):
 
     def test_option_p_cycles_existing_workspaces_independently_and_wraps(self):
         self.start()
-        # Deliberately create sparse workspace numbers out of numeric order.
+        # Select ready workspaces out of numeric order before cycling.
         for number, side in ((3, "left"), (2, "left"), (8, "right"), (7, "right")):
             result = self.launch("workspace", str(number), side)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -261,7 +347,7 @@ class TmxTests(unittest.TestCase):
         config.write_text(binding + "\n")
         self.mux("source-file", str(config))
         os.write(terminal, b"\x1bp")
-        self.until(lambda: self.active() == "1:1")
+        self.until(lambda: self.active() == "3:1")
         self.assertEqual(self.field("pane_id", "=tmx:1.2"), right)
         os.write(terminal, b"\x02d")
         self.assertEqual(process.wait(timeout=5), 0)
@@ -337,6 +423,9 @@ class TmxTests(unittest.TestCase):
                     fixture.start()
                     for number in numbers:
                         fixture.start(str(number))
+                    if numbers == (3, 8):
+                        fixture.remove_workspace(2)
+                        fixture.remove_workspace(7)
                     expected = fixture.mux("list-panes", "-s", "-F",
                                            "#{pane_id} #{@tmx_side} #{@tmx_workspace}")
                     before = fixture.snapshot()
@@ -345,17 +434,18 @@ class TmxTests(unittest.TestCase):
                     fixture.mux("send-keys", "-t", focus, "TMX_MIGRATION=retained", "Enter")
                     fixture.model_three_fixture()
                     self.assertEqual(fixture.launch("--detached").returncode, 0)
-                    self.assertEqual(fixture.snapshot(), before)
+                    self.assertTrue(set(before.splitlines()).issubset(fixture.snapshot().splitlines()))
                     self.assertEqual(fixture.field("pane_id", "=tmx:"), focus)
-                    self.assertEqual(fixture.mux("list-panes", "-s", "-F",
-                                                "#{pane_id} #{@tmx_side} #{@tmx_workspace}"), expected)
+                    self.assertTrue(set(expected.splitlines()).issubset(fixture.mux(
+                        "list-panes", "-s", "-F", "#{pane_id} #{@tmx_side} #{@tmx_workspace}").splitlines()))
+                    self.assertEqual(len(fixture.snapshot().splitlines()), 6)
                     self.assertEqual(fixture.mux("show-option", "-qv", "-t", "=tmx:", "@tmx_workspace_model"), "5")
                     fixture.mux("send-keys", "-t", focus,
                                 f'printf "%s" "$TMX_MIGRATION" > {marker}', "Enter")
                     fixture.until(marker.exists)
                     self.assertEqual(marker.read_text(), "retained")
                     self.assertEqual(fixture.launch("--detached").returncode, 0)
-                    self.assertEqual(fixture.snapshot(), before)
+                    self.assertTrue(set(before.splitlines()).issubset(fixture.snapshot().splitlines()))
                 finally:
                     fixture.doCleanups()
 
@@ -463,8 +553,10 @@ class TmxTests(unittest.TestCase):
         self.assertEqual(self.mux("list-panes", "-s", "-F", "#{pane_id} #{pane_pid} #{@tmx_side} #{@tmx_workspace}"), before)
         self.assertEqual(self.field("@tmx_workspace_model"), "4")
 
-    def test_model_four_sparse_excess_only_left_is_relabelled_without_new_shells(self):
+    def test_model_four_sparse_excess_only_left_is_relabelled_and_missing_slots_are_prepared(self):
         self.start("3")
+        for number in (1, 2, 7, 8):
+            self.remove_workspace(number)
         pane = self.field("pane_id")
         self.mux("set-option", "-qu", "-t", "=tmx:", "@tmx_workspace_3",
                  ";", "set-option", "-t", "=tmx:", "@tmx_workspace_5", pane,
@@ -472,7 +564,8 @@ class TmxTests(unittest.TestCase):
                  ";", "set-option", "-t", "=tmx:", "@tmx_workspace_model", "4")
         before = self.snapshot()
         self.start()
-        self.assertEqual(self.snapshot(), before)
+        self.assertTrue(set(before.splitlines()).issubset(self.snapshot().splitlines()))
+        self.assertEqual(len(self.snapshot().splitlines()), 6)
         self.assertEqual(self.active(), "1:1")
         self.assertEqual(self.field("@tmx_side", pane), "left")
         self.assertEqual(self.field("@tmx_workspace_1"), pane)
@@ -535,6 +628,8 @@ class TmxTests(unittest.TestCase):
 
     def test_option_p_single_workspace_and_scrollback_preservation(self):
         process, terminal = self.scroll_fixture()
+        for number in (2, 3):
+            self.remove_workspace(number)
         before = self.snapshot()
         # With one workspace, Option-p is a no-op and the following digit is
         # ordinary application input, not a lingering workspace prefix.
@@ -575,13 +670,14 @@ class TmxTests(unittest.TestCase):
 
     def test_concurrent_same_side_workspace_is_created_once(self):
         self.start()
+        self.remove_workspace(3)
         other = self.field("pane_id", "=tmx:1.2")
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
             results = list(executor.map(lambda _: self.launch("workspace", "3", "left"), range(4)))
         for result in results:
             self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.active(), "3:1")
-        self.assertEqual(len(self.snapshot().splitlines()), 3)
+        self.assertEqual(len(self.snapshot().splitlines()), 6)
         self.assertEqual(self.field("pane_id", "=tmx:1.2"), other)
 
     def test_workspace_switch_keeps_shell_state_history_and_copy_position(self):
@@ -626,7 +722,7 @@ class TmxTests(unittest.TestCase):
         second_left = self.field("pane_id", "=tmx:2.1")
         first_right = self.field("pane_id", "=tmx:1.2")
         self.start()
-        self.assertEqual(self.snapshot(), original)
+        self.assertTrue(set(original.splitlines()).issubset(self.snapshot().splitlines()))
         self.assertEqual(self.active(), "7:2")
         self.assertEqual(self.launch("workspace", "6", "right").returncode, 0)
         self.assertEqual(self.field("pane_id", "=tmx:2.1"), second_left)
@@ -635,7 +731,8 @@ class TmxTests(unittest.TestCase):
         # Every original process and pane still exists after swapping.
         before = sorted((line.split()[1], line.split()[2]) for line in original.splitlines())
         after = sorted((line.split()[1], line.split()[2]) for line in self.snapshot().splitlines())
-        self.assertEqual(before, after)
+        self.assertTrue(set(before).issubset(after))
+        self.assertEqual(len(after), 6)
         self.assertEqual(self.field("window_panes", "=tmx:2.1"), "2")
 
     def test_exit_reopens_a_fresh_shell_in_the_same_workspace(self):
@@ -650,7 +747,7 @@ class TmxTests(unittest.TestCase):
         self.assertEqual(self.field("@tmx_workspace"), "1")
         self.assertEqual(self.field("@tmx_side"), "left")
         self.assertEqual(self.field("pane_pid", "=tmx:1.2"), other_pid)
-        self.assertEqual(len(self.snapshot().splitlines()), 2)
+        self.assertEqual(len(self.snapshot().splitlines()), 6)
         self.until(lambda: self.field("pane_current_command") == "bash")
         self.assertNotIn("TMX_EXIT_VALUE=gone", self.mux("capture-pane", "-p", "-t", pane))
         marker = self.root / "fresh-shell"
@@ -681,7 +778,7 @@ class TmxTests(unittest.TestCase):
         self.assertEqual(self.field("pane_dead", original), "0")
         self.assertEqual(self.field("@tmx_workspace", original), "1")
         self.assertEqual(self.active(), focus)
-        self.assertEqual(len(self.snapshot().splitlines()), 3)
+        self.assertEqual(len(self.snapshot().splitlines()), 6)
 
     def test_option_r_resets_only_focused_workspace_in_all_key_tables(self):
         self.start()

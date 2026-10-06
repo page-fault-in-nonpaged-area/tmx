@@ -10,6 +10,7 @@ Usage: tmx [1-3|6-8] | tmx --detached [1-3|6-8] | tmx list | tmx history
        tmx app | tmx reset | tmx layout | tmx run codex [Codex arguments]
 
 tmx reconnects to your last workspace and active pane.
+All three workspaces on each side are prepared automatically at launch.
 Workspaces 1-3 belong to the left; 6-8 belong to the right.
 
 Ctrl-b then 1-3/6-8    create/select an exact workspace on its assigned side
@@ -90,6 +91,28 @@ $tab_rows
 EOF
     mux set-option -t '=tmx:' @tmx_left_tabs "$left_tabs" \; \
         set-option -t '=tmx:' @tmx_right_tabs "$right_tabs"
+}
+
+# Create a blank background terminal at its side's visible dimensions. Both
+# launch-time preparation and recovery of a missing slot use the same path.
+create_workspace() {
+    create_current=$1
+    create_side=$2
+    create_number=$3
+    create_dir=$(mux display-message -p -t "$create_current" '#{pane_current_path}')
+    [ -d "$create_dir" ] || create_dir=$PWD
+    create_pane=$(mux new-window -d -P -F '#{pane_id}' -t '=tmx:' -n stored -c "$create_dir" /bin/bash -l)
+    create_dimensions=$(mux display-message -p -t "$create_current" '#{pane_width} #{pane_height}')
+    read -r create_width create_height <<EOF
+$create_dimensions
+EOF
+    mux set-option -p -t "$create_pane" @tmx_side "$create_side" \; \
+        set-option -p -t "$create_pane" @tmx_workspace "$create_number" \; \
+        set-option -t '=tmx:' "@tmx_workspace_$create_number" "$create_pane" \; \
+        set-option -w -t "$create_pane" window-size manual \; \
+        set-option -w -t "$create_pane" pane-border-status off \; \
+        resize-window -t "$create_pane" -x "$create_width" -y "$create_height"
+    printf '%s\n' "$create_pane"
 }
 
 agent_name() {
@@ -579,11 +602,15 @@ EOF
 $registry
 EOF
     # Resolve the visible slots by geometry, then verify their registered owner.
-    visible=$(mux list-panes -t "$main" -F '#{pane_top} #{pane_left} #{pane_id}' | sort -n -k1,1 -k2,2)
+    visible=$(mux list-panes -t "$main" -F '#{pane_top} #{pane_left} #{pane_id} #{pane_width} #{pane_height}' | sort -n -k1,1 -k2,2)
     left_pane=
     right_pane=
-    while read -r row column visible_pane; do
-        if [ -z "$left_pane" ]; then left_pane=$visible_pane; else right_pane=$visible_pane; fi
+    while read -r row column visible_pane visible_width visible_height; do
+        if [ -z "$left_pane" ]; then
+            left_pane=$visible_pane; left_width=$visible_width; left_height=$visible_height
+        else
+            right_pane=$visible_pane; right_width=$visible_width; right_height=$visible_height
+        fi
     done <<EOF
 $visible
 EOF
@@ -612,8 +639,8 @@ EOF
             fi ;;
     esac
     case $side in
-        left) current=$left_pane; active_number=$left_number ;;
-        right) current=$right_pane; active_number=$right_number ;;
+        left) current=$left_pane; active_number=$left_number; current_width=$left_width; current_height=$left_height ;;
+        right) current=$right_pane; active_number=$right_number; current_width=$right_width; current_height=$right_height ;;
         *) die 'cannot determine focused side' ;;
     esac
     if [ "$number" = next ]; then
@@ -658,32 +685,88 @@ EOF
             fi
             die "$message"
         fi
-        start_dir=$(mux display-message -p -t "$current" '#{pane_current_path}')
-        [ -d "$start_dir" ] || start_dir=$PWD
         # Background windows store inactive terminals. Only the two panes in the
         # permanent view are ever shown. Switching swaps terminals, not windows.
-        desired=$(mux new-window -d -P -F '#{pane_id}' -t '=tmx:' -n stored -c "$start_dir")
-        mux set-option -p -t "$desired" @tmx_side "$side" \; \
-            set-option -p -t "$desired" @tmx_workspace "$number" \; \
-            set-option -t '=tmx:' "@tmx_workspace_$number" "$desired"
         # Keep the parked terminal at the visible slot's dimensions. Otherwise
         # swapping into a full-width background window reflows history and can
         # move copy mode away from the line the user was reading.
-        dimensions=$(mux display-message -p -t "$current" '#{pane_width} #{pane_height}')
-        read -r parked_width parked_height <<EOF
-$dimensions
-EOF
-        mux set-option -w -t "$desired" window-size manual \; \
-            set-option -w -t "$desired" pane-border-status off \; \
-            resize-window -t "$desired" -x "$parked_width" -y "$parked_height"
+        desired=$(create_workspace "$current" "$side" "$number")
     fi
     if [ "$current" != "$desired" ]; then
-        mux swap-pane -d -s "$desired" -t "$current" \; select-pane -t "$desired"
+        # Pre-created storage windows may predate client attachment/resizing.
+        # Match their size before parking the current terminal, preserving its
+        # history and copy position. A native condition adds no shell or query.
+        # Leave legacy paired windows intact; resizing affects both terminals.
+        mux if-shell -F -t "$desired" "#{&&:#{==:#{window_panes},1},#{||:#{!=:#{pane_width},$current_width},#{!=:#{pane_height},$current_height}}}" \
+            "resize-window -t $desired -x $current_width -y $current_height" \; \
+            swap-pane -d -s "$desired" -t "$current" \; select-pane -t "$desired"
     else
         mux select-pane -t "$desired"
     fi
 fi
-case $action in attach|detached) apply_orientation ;; esac
+case $action in attach|detached)
+    # Prepare all six slots only at launch/reattach, never in scrolling or
+    # cycling handlers. The shared lock prevents concurrent duplicate shells.
+    registry=$(mux display-message -p -t "$main" '1 #{@tmx_workspace_1}
+2 #{@tmx_workspace_2}
+3 #{@tmx_workspace_3}
+6 #{@tmx_workspace_6}
+7 #{@tmx_workspace_7}
+8 #{@tmx_workspace_8}')
+    rows=$(mux list-panes -s -t '=tmx' -F '#{pane_id} #{@tmx_side} #{@tmx_workspace}')
+    while read -r slot registered; do
+        [ -n "$registered" ] || continue
+        case $slot in [1-3]) owner=left ;; *) owner=right ;; esac
+        valid=no
+        while read -r row; do
+            if [ "$row" = "$registered $owner $slot" ]; then valid=yes; break; fi
+        done <<EOF
+$rows
+EOF
+        [ "$valid" = yes ] || die 'workspace registry mismatch; leaving terminals untouched'
+    done <<EOF
+$registry
+EOF
+    # Refuse unregistered or foreign terminals before creating any shells.
+    while read -r pane owner slot; do
+        case $owner:$slot in
+            retired-left:[4-5]) continue ;;
+            left:[1-3]|right:[6-8]) ;;
+            *) die 'invalid workspace ownership; leaving terminals untouched' ;;
+        esac
+        valid=no
+        while read -r registered_slot registered; do
+            if [ "$registered_slot $registered" = "$slot $pane" ]; then valid=yes; break; fi
+        done <<EOF
+$registry
+EOF
+        [ "$valid" = yes ] || die 'workspace registry mismatch; leaving terminals untouched'
+    done <<EOF
+$rows
+EOF
+    left_pane=
+    right_pane=
+    while read -r pane owner; do
+        case $owner in
+            left) [ -z "$left_pane" ] || die 'duplicate visible left side'; left_pane=$pane ;;
+            right) [ -z "$right_pane" ] || die 'duplicate visible right side'; right_pane=$pane ;;
+            *) die 'invalid visible workspace; leaving terminals untouched' ;;
+        esac
+    done <<EOF
+$(mux list-panes -t "$main" -F '#{pane_id} #{@tmx_side}')
+EOF
+    [ -n "$left_pane" ] && [ -n "$right_pane" ] || die 'missing visible workspace side'
+    while read -r slot registered; do
+        [ -z "$registered" ] || continue
+        case $slot in
+            [1-3]) create_workspace "$left_pane" left "$slot" >/dev/null ;;
+            [6-8]) create_workspace "$right_pane" right "$slot" >/dev/null ;;
+        esac
+    done <<EOF
+$registry
+EOF
+    apply_orientation ;;
+esac
 refresh_tabs
 # Reconnect to the permanent view without changing its focused side.
 mux select-window -t "$main"
