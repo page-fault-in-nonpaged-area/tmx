@@ -66,7 +66,7 @@ class LayoutTests(unittest.TestCase):
 
     def test_raw_option_y_repeated_toggles_preserve_all_processes_and_focus_after_swaps(self):
         self.t.start()
-        for number in (2, 3, 4, 5, 7, 8):
+        for number in (2, 3, 7, 8):
             self.t.start(str(number))
         before = self.identities()
         focus = self.focused()
@@ -84,14 +84,14 @@ class LayoutTests(unittest.TestCase):
         process, terminal = self.attach()
         self.toggle(terminal, True)
         # Create new slots while stacked, using actual prefix + digit bytes.
-        for number in (2, 3, 4, 5, 7, 8):
+        for number in (2, 3, 7, 8):
             other = self.visible("right" if number < 6 else "left")
             os.write(terminal, b"\x02" + str(number).encode())
             self.t.until(lambda: self.t.field("@tmx_workspace", "=tmx:") == str(number))
             self.assertEqual(self.visible("right" if number < 6 else "left"), other)
             self.assertTrue(self.geometry(True))
         before = self.identities(windows=False)
-        for side, sequence in (("left", (1, 2, 3, 4, 5, 1)), ("right", (6, 7, 8, 6))):
+        for side, sequence in (("left", (1, 2, 3, 1)), ("right", (6, 7, 8, 6))):
             self.t.mux("select-pane", "-t", self.visible(side))
             other = self.visible("right" if side == "left" else "left")
             for number in sequence:
@@ -109,7 +109,7 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(process.wait(timeout=5), 0)
 
     def test_saved_vertical_mode_survives_disconnect_and_relaunch(self):
-        self.t.start("5")
+        self.t.start("3")
         self.t.start("8")
         before = self.identities()
         focus = self.focused()
@@ -168,7 +168,7 @@ class LayoutTests(unittest.TestCase):
 
     def test_vertical_headers_follow_their_panes_and_plugins_appear_only_in_footer(self):
         self.t.start()
-        for number in (2, 3, 4, 5, 7, 8):
+        for number in (2, 3, 7, 8):
             self.t.start(str(number))
         self.t.mux("select-pane", "-t", self.visible("left"))
         before = self.identities()
@@ -198,7 +198,7 @@ class LayoutTests(unittest.TestCase):
             active_row = top if side == "left" else bottom
             self.t.until(lambda: "\x1b[31m●" in screen(True)[active_row])
             rows, ansi = screen(), screen(True)
-            self.assertIn("[1] [2] [3] [4] [●]", rows[top])
+            self.assertIn("[1] [2] [●]", rows[top])
             self.assertIn("[1] [2] [●]", rows[bottom])
             for row in (rows[top], rows[bottom], rows[-1]):
                 start, end = row.index("["), row.rindex("]") + 1

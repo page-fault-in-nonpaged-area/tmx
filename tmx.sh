@@ -6,13 +6,13 @@ umask 077
 die() { printf 'tmx: %s\n' "$*" >&2; exit 2; }
 usage() {
     cat <<'EOF'
-Usage: tmx [1-8] | tmx --detached [1-8] | tmx list | tmx history
+Usage: tmx [1-3|6-8] | tmx --detached [1-3|6-8] | tmx list | tmx history
        tmx app | tmx reset | tmx layout | tmx run codex [Codex arguments]
 
 tmx reconnects to your last workspace and active pane.
-Workspaces 1-5 belong to the left; 6-8 belong to the right.
+Workspaces 1-3 belong to the left; 6-8 belong to the right.
 
-Ctrl-b then 1-8    create/select an exact workspace on its assigned side
+Ctrl-b then 1-3/6-8    create/select an exact workspace on its assigned side
 Ctrl-u / Ctrl-k   scroll up / down (hold 2 seconds to accelerate)
 Option-i / k      scroll up / down outside copy mode (Escape + i/k)
 Option-o / p      next pane / next workspace (Escape + o/p)
@@ -198,7 +198,7 @@ if [ "${1-}" = reset ]; then
 $header
 EOF
     [ "$session" = tmx ] && [ "$window" = "$main" ] || die 'cannot resolve visible workspace'
-    case $owner:$number in left:[1-5]|right:[6-8]) ;; *) die 'invalid workspace ownership; leaving terminal untouched' ;; esac
+    case $owner:$number in left:[1-3]|right:[6-8]) ;; *) die 'invalid workspace ownership; leaving terminal untouched' ;; esac
     registered=$(mux show-option -qv -t '=tmx:' "@tmx_workspace_$number")
     [ "$registered" = "$pane" ] || die 'workspace registry mismatch; leaving terminal untouched'
     [ -d "$start_dir" ] || start_dir=$HOME
@@ -319,9 +319,9 @@ case ${1-} in
 esac
 if [ "$#" -gt 0 ]; then
     case $1 in
-        [1-8]) number=$1 ;;
+        [1-3]|[6-8]) number=$1 ;;
         next) [ "$action" = workspace ] || die 'next is only valid for workspace cycling'; number=next ;;
-        *) die 'expected a workspace number from 1 to 8; see tmx --help' ;;
+        *) die 'expected workspace 1-3 (left) or 6-8 (right); see tmx --help' ;;
     esac
     shift
 fi
@@ -376,7 +376,7 @@ fi
 # Nothing is killed, respawned or swapped during migration. Validate everything
 # first so externally changed layouts are left untouched.
 model=$(mux show-option -qv -t '=tmx:' @tmx_workspace_model)
-if [ "$model" != 2 ] && [ "$model" != 3 ] && [ "$model" != 4 ]; then
+if [ "$model" != 2 ] && [ "$model" != 3 ] && [ "$model" != 4 ] && [ "$model" != 5 ]; then
     windows=$(mux list-windows -t '=tmx' -F '#{window_index} #{window_panes}')
     while read -r index count; do
         case $index in [1-9]) ;; *) die 'cannot migrate a workspace outside 1-9' ;; esac
@@ -389,7 +389,7 @@ EOF
     while read -r tagged_pane index position; do
         case $position in 1) tagged_side=left ;; 2) tagged_side=right ;; *) die 'unexpected pane index' ;; esac
         if [ "$fresh" = yes ] && [ "$tagged_side" = left ]; then
-            case $number in [1-5]) index=$number ;; *) index=1 ;; esac
+            case $number in [1-3]) index=$number ;; *) index=1 ;; esac
         fi
         mux set-option -p -t "$tagged_pane" @tmx_side "$tagged_side" \; \
             set-option -p -t "$tagged_pane" @tmx_workspace "$index"
@@ -405,7 +405,7 @@ fi
 # Validate every record before relabelling in one tmux command queue. Existing
 # terminals, processes, positions and focus survive without creating shells.
 model=$(mux show-option -qv -t '=tmx:' @tmx_workspace_model)
-if [ "$model" != 4 ]; then
+if [ "$model" != 4 ] && [ "$model" != 5 ]; then
     rows=$(mux list-panes -s -t '=tmx' -F '#{pane_id} #{@tmx_side} #{@tmx_workspace}' | sort -k2,2 -k3,3n)
     left_count=0
     right_count=0
@@ -439,7 +439,7 @@ if [ "$model" != 4 ]; then
             registered=$(mux show-option -qv -t '=tmx:' "@tmx_workspace_$stored_number")
             [ "$registered" = "$stored_pane" ] || die 'workspace registry mismatch; leaving terminals untouched'
         fi
-        # A fresh launch can start left workspace 1-5 without an extra shell.
+        # A fresh launch can start left workspace 1-3 without an extra shell.
         if [ "$fresh" = yes ] && [ "$stored_side" = left ]; then slot=$stored_number; fi
         set -- "$@" \; set-option -t '=tmx:' "@tmx_workspace_$slot" "$stored_pane" \; \
             set-option -p -t "$stored_pane" @tmx_workspace "$slot"
@@ -448,6 +448,68 @@ $rows
 EOF
     [ "$left_count" -ge 1 ] && [ "$right_count" -ge 1 ] || die 'missing workspace side'
     mux "$@"
+    model=4
+fi
+# Model 5 caps the left/top at three without killing old slots 4/5.
+# Keep surplus terminals parked and tagged retired-left for manual recovery.
+# Validate the complete old registry before changing tags, focus or position.
+if [ "$model" = 4 ]; then
+    main=$(mux show-option -v -t '=tmx:' @tmx_main_window)
+    [ "$(mux display-message -p -t "$main" '#{window_panes}')" = 2 ] ||
+        die 'visible layout was modified outside tmx; leaving it untouched'
+    rows=$(mux list-panes -s -t '=tmx' -F '#{pane_id} #{@tmx_side} #{@tmx_workspace}' | sort -k3,3n)
+    kept_left=
+    excess_left=
+    while read -r stored_pane stored_side stored_number; do
+        case $stored_side:$stored_number in
+            left:[1-3]) [ -n "$kept_left" ] || kept_left=$stored_pane ;;
+            left:[4-5]) [ -n "$excess_left" ] || excess_left=$stored_pane ;;
+            right:[6-8]) ;;
+            *) die 'invalid model-4 workspace; leaving terminals untouched' ;;
+        esac
+        [ "$(mux show-option -qv -t '=tmx:' "@tmx_workspace_$stored_number")" = "$stored_pane" ] ||
+            die 'workspace registry mismatch; leaving terminals untouched'
+    done <<EOF
+$rows
+EOF
+    focused=$(mux display-message -p -t "$main" '#{pane_id}')
+    visible_left=
+    visible_right=
+    while read -r visible_pane visible_side; do
+        case $visible_side in
+            left) [ -z "$visible_left" ] || die 'duplicate visible left side'; visible_left=$visible_pane ;;
+            right) [ -z "$visible_right" ] || die 'duplicate visible right side'; visible_right=$visible_pane ;;
+            *) die 'invalid visible workspace; leaving terminals untouched' ;;
+        esac
+    done <<EOF
+$(mux list-panes -t "$main" -F '#{pane_id} #{@tmx_side}')
+EOF
+    [ -n "$visible_left" ] && [ -n "$visible_right" ] || die 'missing visible workspace side'
+    set -- set-option -t '=tmx:' @tmx_workspace_model 5
+    # A sparse old installation may have only left slot 4 or 5. Retain that
+    # terminal as slot 1 rather than starting a new shell or losing its state.
+    if [ -z "$kept_left" ]; then
+        [ -n "$excess_left" ] || die 'missing left workspace'
+        kept_left=$excess_left
+        set -- "$@" \; set-option -p -t "$kept_left" @tmx_workspace 1 \; \
+            set-option -t '=tmx:' @tmx_workspace_1 "$kept_left"
+    fi
+    while read -r stored_pane stored_side stored_number; do
+        case $stored_side:$stored_number in
+            left:[4-5])
+                if [ "$stored_pane" != "$kept_left" ]; then
+                    set -- "$@" \; set-option -p -t "$stored_pane" @tmx_side retired-left
+                fi
+                if [ "$stored_pane" = "$visible_left" ] && [ "$stored_pane" != "$kept_left" ]; then
+                    set -- "$@" \; swap-pane -d -s "$kept_left" -t "$visible_left"
+                    if [ "$focused" = "$visible_left" ]; then focused=$kept_left; fi
+                fi ;;
+        esac
+    done <<EOF
+$rows
+EOF
+    mux "$@" \; set-option -qu -t '=tmx:' @tmx_workspace_4 \; \
+        set-option -qu -t '=tmx:' @tmx_workspace_5 \; select-pane -t "$focused"
 fi
 main=$(mux show-option -v -t '=tmx:' @tmx_main_window)
 [ "$(mux display-message -p -t "$main" '#{window_panes}')" = 2 ] ||
@@ -461,7 +523,7 @@ if [ "$action" = layout ]; then
     right_pane=
     while read -r pane owner slot; do
         case $owner:$slot in
-            left:[1-5]) [ -z "$left_pane" ] || die 'duplicate visible left side'; left_pane=$pane ;;
+            left:[1-3]) [ -z "$left_pane" ] || die 'duplicate visible left side'; left_pane=$pane ;;
             right:[6-8]) [ -z "$right_pane" ] || die 'duplicate visible right side'; right_pane=$pane ;;
             *) die 'invalid visible workspace; leaving terminals untouched' ;;
         esac
@@ -497,15 +559,13 @@ if [ -n "$number" ]; then
     registry=$(mux display-message -p -t "$main" '1 #{@tmx_workspace_1}
 2 #{@tmx_workspace_2}
 3 #{@tmx_workspace_3}
-4 #{@tmx_workspace_4}
-5 #{@tmx_workspace_5}
 6 #{@tmx_workspace_6}
 7 #{@tmx_workspace_7}
 8 #{@tmx_workspace_8}')
     pane_rows=$(mux list-panes -s -t '=tmx' -F '#{pane_id} #{@tmx_side} #{@tmx_workspace}')
     while read -r slot registered; do
         [ -n "$registered" ] || continue
-        case $slot in [1-5]) owner=left ;; *) owner=right ;; esac
+        case $slot in [1-3]) owner=left ;; *) owner=right ;; esac
         valid=no
         while read -r row; do
             if [ "$row" = "$registered $owner $slot" ]; then valid=yes; break; fi
@@ -537,7 +597,7 @@ $candidates
 EOF
     [ -n "$left_number" ] && [ -n "$right_number" ] || die 'visible terminals violate fixed workspace sides; leaving them untouched'
     case $number in
-        [1-5]) side=left ;;
+        [1-3]) side=left ;;
         [6-8]) side=right ;;
         next)
             # Never trust the key queue's old pane context: a swap may have
@@ -589,7 +649,7 @@ EOF
     if [ -z "$desired" ]; then
         # Count under the same lock as creation, so simultaneous requests cannot
         # exceed the cap. Existing workspaces always remain selectable.
-        if [ "$side" = left ]; then side_limit=5; else side_limit=3; fi
+        side_limit=3
         if [ "$side_count" -ge "$side_limit" ]; then
             message="$side already has $side_limit workspaces; Option-p cycles existing workspaces"
             if [ "$action" = workspace ]; then
