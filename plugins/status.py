@@ -32,11 +32,11 @@ def watch(socket):
         last = {}
         def publish(option, value):
             if last.get(option) != value:
-                subprocess.run(["tmux", "-L", socket, "set-option", "-g", option, value],
+                subprocess.run(["tmux", "-u", "-L", socket, "set-option", "-g", option, value],
                                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
                 last[option] = value
         cache = root / (socket + ".weather.json")
-        while subprocess.run(["tmux", "-L", socket, "has-session", "-t", "=tmx"],
+        while subprocess.run(["tmux", "-u", "-L", socket, "has-session", "-t", "=tmx"],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5).returncode == 0:
             publish("@tmx_storage", disk.storage() if ENABLED["disk"] else "")
             if ENABLED["weather"] and os.environ.get("TMX_WEATHER_DISABLED") != "1":

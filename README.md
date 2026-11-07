@@ -1,7 +1,50 @@
 # tmx
 
+Install from a Linux terminal with:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/page-fault-in-nonpaged-area/tmx/main/install.sh | sh
+```
+
+Have `curl`, Git, tmux 3.3+, Bash, `readlink`, `flock`, `ps`, Make, Python 3 and
+PyYAML >=5.4,<7 installed first. The bootstrap checks dependencies and reports missing
+ones; it does not install system packages or use sudo. On Debian/Ubuntu, the
+packages are `curl git tmux bash coreutils util-linux procps make python3 python3-yaml`.
+
+On Alpine Linux in iOS iSH, run this from iSH's default root shell:
+
+```sh
+apk add --no-cache curl ca-certificates git tmux bash coreutils util-linux procps make python3 py3-yaml openssh-client && curl -fsSL https://raw.githubusercontent.com/page-fault-in-nonpaged-area/tmx/main/install.sh | BIN_DIR=/usr/local/bin sh
+```
+
+This uses Alpine packages, including its Python YAML package, and puts `tmx`
+in `/usr/local/bin`, already on Alpine's default PATH. Coreutils and procps are
+needed because BusyBox's `readlink` and `ps` lack options used by tmx. It does
+not change Alpine repositories or upgrade the distribution. On a non-root
+account, have the packages installed first and use the normal per-user command.
+The current headers require tmux 3.3 or newer. Older iSH package sets that
+provide tmux 3.2 are rejected; installing dependencies alone is not sufficient
+on those versions. Alpine's `tmux next-3.4` version label is accepted.
+On tmux 3.3/3.4, weather symbols use text presentation to avoid incorrect emoji
+width calculations. The launcher explicitly uses UTF-8 even without locale settings.
+
+The bootstrap clones into `${XDG_DATA_HOME:-~/.local/share}/tmx` and links
+`~/.local/bin/tmx`. An existing checkout installation is reused, preserving local
+changes and `config.yml`; rerunning does not pull updates or restart sessions.
+Keep the checkout in place. Set `TMX_INSTALL_DIR` and `BIN_DIR` on the `sh`
+process to override the locations, for example:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/page-fault-in-nonpaged-area/tmx/main/install.sh | TMX_INSTALL_DIR="$HOME/tools/tmx" BIN_DIR="$HOME/.local/bin" sh
+```
+
+If `~/.local/bin` is not in your PATH, add `export PATH="$HOME/.local/bin:$PATH"`
+to your shell startup file. The installer prints a reminder when needed.
+
+For installation from an existing checkout:
+
 Run `tmx` from bash or sh on dev@dev. The command points to `tmx.sh` in this
-directory. Requires Linux, tmux 3.2+, bash, readlink and flock. The optional
+directory. Requires Linux, tmux 3.3+, bash, readlink and flock. The optional
 status plugins use Python 3's standard library. Building configuration and running
 tests require make, Python 3 and PyYAML (`python3 -m pip install -r requirements-dev.txt`,
 or your distribution's Python YAML package). Installation is private to the current user,
@@ -36,7 +79,7 @@ All three status components live under `plugins/`: `disk.py`, `weather.py` and
 `plugins/settings.py` loads the generated JSON once. The clock remains a native
 tmux format. YAML is compiled into ignored `.generated/` files at build time,
 so no YAML parsing or new processes are added to keyboard or redraw paths.
-When disk and weather are both disabled, no status worker starts.
+When disk and weather are both disabled, their status worker does not start.
 
 `tmx` opens two side-by-side terminals: **left** and **right**. Each side has its
 own set of workspaces: **at most three on the left/top (1–3)** and **three on the
@@ -58,6 +101,22 @@ workspace terminals cannot move a header across the divider. This also avoids
 tmux's reserved two-character pane-header margin in side-by-side mode. The
 right side has one right-aligned block, for example:
 `[ sda: 78% | ☀️ 24° UV 5 | 10/05 12:12 ]`.
+
+When a visible workspace is running foreground SSH, its header adds a
+`[ssh:user@host]` label with black text on an aqua background beside the workspace tabs. In horizontal mode, SSH in
+the right pane hides the weather and disk segments; the clock stays when it
+fits. SSH in the left pane leaves the right-hand indicators alone. In vertical
+mode, each pane keeps its SSH label and the bottom status indicators remain.
+Long destinations are shortened to fit; very narrow panes omit the label.
+
+The label follows the workspace and disappears when SSH exits or is suspended.
+A local helper checks visible panes once per second, independently of weather;
+it makes no network requests and does not inspect remote programs. It reads the
+SSH command-line destination, including `user@host`, `-l user`, `-o User=...`,
+and `ssh://` URLs. Config aliases appear as entered (`[ssh:alias]` when no user
+is explicit); SSH config is not executed to resolve them. Connecting and
+authentication prompts also count as foreground SSH. Python 3 and `ps` are
+needed for this indicator, even when disk and weather are disabled.
 
 Press **Option-y** to toggle vertical mode: the left side moves to the top and
 the right side moves to the bottom. Each pane keeps its own centered workspace
@@ -253,8 +312,10 @@ future versions, and mouse handling inside dialogs may differ.
 
 **Ctrl-i and Tab send the same byte on legacy terminals**, even with separate
 physical keys. That byte passes through as Tab. Ctrl-i is no longer a scroll
-shortcut; Ctrl-u avoids the ambiguity and works on iSH. **Ctrl-b then `t`** also
-sends a literal Tab. Ctrl-u and Ctrl-k scroll history, except in nano where
+shortcut; Ctrl-u avoids the ambiguity and works on iSH. **Option/Alt-t** sends
+a literal Tab directly; **Ctrl-b then `t`** also remains available. Option/Alt-t
+replaces the application's usual Alt-t action (such as swapping words in Bash).
+Ctrl-u and Ctrl-k scroll history, except in nano where
 they pass through to the editor. Option-p cycles existing workspaces in the focused
 side; Option-o changes which side is focused.
 

@@ -58,7 +58,9 @@ class ReloadTests(unittest.TestCase):
                 self.assertEqual(mux('show-option', '-gqv', '@tmx_color_text'), 'brightwhite')
                 self.assertEqual(mux('show-option', '-gqv', '@tmx_storage'), '')
                 self.assertEqual(mux('show-option', '-gqv', '@tmx_weather'), '')
-                self.assertNotIn('run-shell', mux('show-hooks', '-g', 'client-attached'))
+                hooks = mux('show-hooks', '-g', 'client-attached')
+                self.assertNotIn('plugins/status.py', hooks)
+                self.assertIn('plugins/ssh.py', hooks)
                 # Resume disk-only operation with exactly one helper and no HTTP.
                 data['plugins']['disk'] = True
                 (root / 'config.yml').write_text(yaml.safe_dump(data))
@@ -69,16 +71,30 @@ class ReloadTests(unittest.TestCase):
                     time.sleep(0.02)
                 self.assertIn('#[fg=brightwhite]sda:', mux('show-option', '-gqv', '@tmx_storage'))
                 self.assertEqual(mux('list-panes', '-a', '-F', '#{pane_id} #{pane_pid} #{@tmx_workspace} #{pane_dead} #{window_id} #{pane_active}'), snapshot)
+                def ssh_workers():
+                    found = []
+                    for directory in Path('/proc').iterdir():
+                        try:
+                            args = (directory / 'cmdline').read_bytes().split(b'\0')
+                            if len(args) == 5 and args[1:4] == [str(root / 'plugins/ssh.py').encode(), b'--watch', socket.encode()]:
+                                found.append(directory.name)
+                        except (OSError, ValueError):
+                            pass
+                    return found
+                deadline = time.monotonic() + 5
+                while len(ssh_workers()) != 1 and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                self.assertEqual(len(ssh_workers()), 1)
             finally:
                 subprocess.run(['tmux', '-L', socket, 'kill-server'], capture_output=True)
                 if worker is not None and worker.poll() is None:
                     worker.terminate()
                     worker.wait(timeout=5)
-                # Clean up the detached disk-only test helper immediately.
+                # Clean up both detached test helpers immediately.
                 for directory in Path('/proc').iterdir():
                     try:
                         args = (directory / 'cmdline').read_bytes().split(b'\0')
-                        if len(args) == 5 and args[1:4] == [str(root / 'plugins/status.py').encode(), b'--watch', socket.encode()]:
+                        if len(args) == 5 and args[1] in [str(root / ('plugins/' + name)).encode() for name in ('status.py', 'ssh.py')] and args[2:4] == [b'--watch', socket.encode()]:
                             os.kill(int(directory.name), 15)
                     except (FileNotFoundError, ProcessLookupError, PermissionError, NotADirectoryError):
                         pass

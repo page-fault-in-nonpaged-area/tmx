@@ -10,6 +10,7 @@ configure:
 	$(PYTHON) scripts/configure.py
 
 test: configure
+	sh -n install.sh
 	sh -n tmx.sh
 	bash -n tmx.sh
 	$(PYTHON) -m unittest discover -s tests -v

@@ -81,10 +81,10 @@ class ConfigTests(unittest.TestCase):
                     mux('set-option', '-g', '@tmx_weather', '☀️ 24° UV 5' if switches[1] else '')
                     def render(option='@tmx_header_block'):
                         result = mux('display-message', '-p', '-t', '=tmx:', '#{E:' + option + '}')
-                        return re.sub(r'#\[[^]]*\]', '', result).strip()
+                        return re.sub(r'#\[[^]]*\]', '', result).replace('\ufe0f', '').strip()
                     parts = []
                     if switches[0]: parts.append('sda: 78%')
-                    if switches[1]: parts.append('☀️ 24° UV 5')
+                    if switches[1]: parts.append('☀ 24° UV 5')
                     if switches[2]: parts.append(r'\d{2}/\d{2} \d{2}:\d{2}')
                     expected = r'\[ ' + r' \| '.join(parts) + r' \]' if parts else ''
                     self.assertRegex(render(), '^' + expected + '$')
@@ -94,12 +94,19 @@ class ConfigTests(unittest.TestCase):
                     self.assertRegex(render('@tmx_footer'), '^' + expected + '$')
                     mux('resize-window', '-x', '80', '-y', '30')
                     mux('set-option', '-g', '@tmx_weather', '')
-                    parts = [p for p in parts if p != '☀️ 24° UV 5']
+                    parts = [p for p in parts if p != '☀ 24° UV 5']
                     expected = r'\[ ' + r' \| '.join(parts) + r' \]' if parts else ''
                     self.assertRegex(render(), '^' + expected + '$')
                     self.assertRegex(render('@tmx_footer'), '^' + expected + '$')
                     if not switches[0] and not switches[1]:
-                        self.assertNotIn('run-shell', mux('show-hooks', '-g', 'client-attached'))
+                        self.assertNotIn('plugins/status.py', mux('show-hooks', '-g', 'client-attached'))
+                    # SSH suppresses disk/weather for every plugin combination,
+                    # while the vertical footer still renders its usual data.
+                    mux('set-option', '-g', '@tmx_ssh_active', '1')
+                    mux('set-option', '-p', '-t', '=tmx:', '@tmx_ssh', 'dev@host')
+                    ssh_expected = r'\[ \d{2}/\d{2} \d{2}:\d{2} \]' if switches[2] else ''
+                    self.assertRegex(render(), '^' + ssh_expected + '$')
+                    self.assertRegex(render('@tmx_footer'), '^' + expected + '$')
                     mux('resize-window', '-x', '18', '-y', '30')
                     self.assertEqual(render(), '')
                     mux('resize-window', '-x', '12', '-y', '30')

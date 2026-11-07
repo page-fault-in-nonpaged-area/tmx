@@ -341,11 +341,12 @@ class TmxTests(unittest.TestCase):
         process, terminal = self.attach()
         # Force a stale tmux target while retaining the real Option-p command.
         # A handler trusting this parked right-pane context jumps sides.
-        binding = self.mux("list-keys", "-T", "root", "M-p")
-        binding = binding.replace("run-shell ", "run-shell -t " + parked_right + " ")
-        config = self.root / "stale-context.conf"
-        config.write_text(binding + "\n")
-        self.mux("source-file", str(config))
+        binding = next(line for line in self.mux("list-keys", "-T", "root").splitlines()
+                       if "M-p" in line.split())
+        self.assertIn("workspace next", binding)
+        # Older tmux versions do not round-trip list-keys quoting reliably.
+        self.mux("bind-key", "-T", "root", "M-p", "run-shell", "-t", parked_right,
+                 '"$TMX_LAUNCHER" workspace next')
         os.write(terminal, b"\x1bp")
         self.until(lambda: self.active() == "3:1")
         self.assertEqual(self.field("pane_id", "=tmx:1.2"), right)
@@ -585,13 +586,14 @@ class TmxTests(unittest.TestCase):
             return subprocess.check_output(["tmux", "-L", outer, *args], text=True, timeout=5)
         self.addCleanup(lambda: subprocess.run(["tmux", "-L", outer, "kill-server"], capture_output=True))
         command = shlex.join(["/usr/bin/env", "-u", "TMUX", "-u", "TMUX_PANE",
+                              "TERM=xterm-256color",
                               "TMX_SOCKET=" + self.socket, "TMX_STATUS_DISABLED=1",
                               "XDG_STATE_HOME=" + self.env["XDG_STATE_HOME"], str(SCRIPT)])
         view("-f", "/dev/null", "new-session", "-d", "-s", "view", "-x", "130", "-y", "30", command)
         self.until(lambda: self.mux("list-clients", "-F", "#{client_tty}") != "")
         def row():
             return view("capture-pane", "-p", "-N", "-t", "=view:").splitlines()[0]
-        self.until(lambda: "☀️" in row())
+        self.until(lambda: "☀" in row())
         right = self.field("pane_id", "=tmx:1.2")
         left_width = int(self.field("pane_width"))
         for number in (2, 3, 1, 2):
@@ -604,8 +606,8 @@ class TmxTests(unittest.TestCase):
             self.assertEqual(header[left_width], "┬", header)
             self.assertTrue(header.startswith("── " + left_tabs), header)
             self.assertIn("[●] [2] [3]", header[left_width + 1:])
-            self.assertIn("sda: 78% | ☀️ 24° UV 5 |", header[left_width + 1:])
-            self.assertNotIn("☀️", header[:left_width])
+            self.assertIn("sda: 78% | ☀ 24° UV 5 |", header[left_width + 1:].replace('\ufe0f', ''))
+            self.assertNotIn("☀", header[:left_width])
             ansi = view("capture-pane", "-p", "-e", "-N", "-t", "=view:").splitlines()[0]
             self.assertIn("\x1b[31m●", ansi.split("┬")[0])
             self.assertNotIn("\x1b[31m●", ansi.split("┬")[1])

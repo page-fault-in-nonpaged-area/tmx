@@ -18,13 +18,13 @@ def reload(socket):
     if not socket or not all(c.isalnum() and c.isascii() or c in '-_' for c in socket):
         raise ValueError('invalid socket name')
     def mux(*args):
-        return subprocess.check_output(['tmux', '-L', socket, *args], text=True, stderr=subprocess.PIPE, timeout=5).strip()
+        return subprocess.check_output(['tmux', '-u', '-L', socket, *args], text=True, stderr=subprocess.PIPE, timeout=5).strip()
     if mux('show-option', '-gv', '@tmx') != 'on':
         raise ValueError('refusing to reload an unrelated server')
     # Apply only styling and the plugin attach hook, never layout or key bindings.
     mux('source-file', str(ROOT / '.generated/appearance.conf'))
-    # Replace this repository's one optional helper, preserving its hourly cache.
-    paths = {str(ROOT / 'status.py'), str(ROOT / 'plugins/status.py')}
+    # Replace this repository's helpers, preserving the hourly weather cache.
+    paths = {str(ROOT / 'status.py'), str(ROOT / 'plugins/status.py'), str(ROOT / 'plugins/ssh.py')}
     for directory in Path('/proc').iterdir():
         if not directory.name.isdigit():
             continue
@@ -49,6 +49,8 @@ def reload(socket):
     if settings['plugins']['disk'] or settings['plugins']['weather']:
         command = 'exec python3 ' + shlex.quote(str(ROOT / 'plugins/status.py')) + ' --watch ' + shlex.quote(socket) + ' 2>/dev/null'
         mux('run-shell', '-b', command)
+    command = 'exec python3 ' + shlex.quote(str(ROOT / 'plugins/ssh.py')) + ' --watch ' + shlex.quote(socket) + ' 2>/dev/null'
+    mux('run-shell', '-b', command)
 
 
 if __name__ == '__main__':

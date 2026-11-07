@@ -95,6 +95,13 @@ def header(data, root):
     text = f'#[fg={colors["text"]}]'
     clock = expand((root / 'plugins/clock.tmux').read_text().strip(), data) if enabled['clock'] else ''
 
+    def published(option):
+        if option == '@tmx_weather':
+            # tmux 3.3/3.4 mismeasure emoji variation selectors on musl,
+            # clipping the right header. Use text presentation there.
+            return '#{?#{m/r:^(next-)?3[.][34]([^0-9].*)?$,#{version}},#{s/️//:@tmx_weather},#{@tmx_weather}}'
+        return '#{' + option + '}'
+
     def segment(names):
         # Optional segments recursively join only when their values exist.
         tail, present = '', '0'
@@ -105,7 +112,7 @@ def header(data, root):
             option = '@tmx_storage' if name == 'disk' else '@tmx_weather'
             exists = '#{!=:#{' + option + '},}'
             separator = text + ' | ' if present == '1' else '#{?' + present + ',' + text + ' | ,}'
-            tail = '#{?' + exists + ',#{E:' + option + '}' + separator + ',}' + tail
+            tail = '#{?' + exists + ',' + published(option) + separator + ',}' + tail
             present = '1' if present == '1' else exists if present == '0' else '#{||:' + exists + ',' + present + '}'
         if present == '0':
             return ''
@@ -120,7 +127,7 @@ def header(data, root):
     clock_only = ['clock'] if enabled['clock'] else []
     lines = [f"set -g @tmx_header_clock '{clock}'"]
     for name, option in (('disk', '@tmx_storage'), ('weather', '@tmx_weather')):
-        value = '#{?#{!=:#{' + option + '},},#{E:' + option + '}' + text + ' | ,}'
+        value = '#{?#{!=:#{' + option + '},},' + published(option) + text + ' | ,}'
         lines.append(f"set -g @tmx_header_{name} '{value}'")
     for name, names in (('full', full), ('compact', compact), ('clock_only', clock_only)):
         lines.append(f"set -g @tmx_header_{name} '{segment(names)}'")
@@ -128,8 +135,11 @@ def header(data, root):
     block = ''
     for name in reversed(('full', 'compact', 'clock_only')):
         option = '@tmx_header_' + name
-        fits = '#{>=:#{pane_width},#{e|+:4,#{e|+:#{w:#{E:@tmx_header_tabs}},#{w:#{E:' + option + '}}}}}'
+        fits = '#{e|>=:#{pane_width},#{e|+:4,#{e|+:#{w:#{E:@tmx_header_title}},#{w:#{E:' + option + '}}}}}'
         block = '#{?' + fits + ',#{E:' + option + '},' + block + '}'
+    clock_fits = '#{e|>=:#{pane_width},#{e|+:4,#{e|+:#{w:#{E:@tmx_header_title}},#{w:#{E:@tmx_header_clock_only}}}}}'
+    ssh_block = '#{?' + clock_fits + ',#{E:@tmx_header_clock_only},}'
+    block = '#{?#{E:@tmx_ssh_active},' + ssh_block + ',' + block + '}'
     block = '#{?#{==:#{@tmx_side},right},' + block + ',}'
     lines.append(f"set -g @tmx_header_block '{block}'")
     footer = ''
@@ -142,6 +152,7 @@ def header(data, root):
         lines.append('set-hook -g client-attached[20] { run-shell -b \'exec python3 "${TMX_LAUNCHER%/*}/plugins/status.py" --watch "$TMX_SOCKET" 2>/dev/null\' }')
     else:
         lines.append('set-hook -gu client-attached[20]')
+    lines.append('set-hook -g client-attached[21] { run-shell -b \'exec python3 "${TMX_LAUNCHER%/*}/plugins/ssh.py" --watch "$TMX_SOCKET" 2>/dev/null\' }')
     # Clear any previously published disabled segments on explicit reload.
     for name, option in (('disk', '@tmx_storage'), ('weather', '@tmx_weather')):
         if not enabled[name]:

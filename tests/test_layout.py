@@ -179,6 +179,7 @@ class LayoutTests(unittest.TestCase):
             return subprocess.check_output(["tmux", "-L", outer, *args], text=True, timeout=5)
         self.addCleanup(lambda: subprocess.run(["tmux", "-L", outer, "kill-server"], capture_output=True))
         command = shlex.join(["/usr/bin/env", "-u", "TMUX", "-u", "TMUX_PANE",
+                              "TERM=xterm-256color",
                               "TMX_SOCKET=" + self.t.socket, "TMX_STATUS_DISABLED=1",
                               "XDG_STATE_HOME=" + self.t.env["XDG_STATE_HOME"], str(test_tmx.SCRIPT)])
         view("-f", "/dev/null", "new-session", "-d", "-s", "view", "-x", "100", "-y", "40", command)
@@ -205,7 +206,7 @@ class LayoutTests(unittest.TestCase):
                 self.assertLessEqual(abs(start - (100 - end)), 1)
             self.assertNotIn("sda:", rows[top] + rows[bottom])
             self.assertNotIn("UV", rows[top] + rows[bottom])
-            self.assertIn("sda: 78% | ☀️ 24° UV 5 |", rows[-1])
+            self.assertIn("sda: 78% | ☀ 24° UV 5 |", rows[-1].replace('\ufe0f', ''))
             self.assertRegex(rows[-1], r"\d{2}/\d{2} \d{2}:\d{2} \] \s*$")
             self.assertNotIn("\x1b[31m●", ansi[bottom if side == "left" else top])
         view("send-keys", "-t", "=view:", "M-y")

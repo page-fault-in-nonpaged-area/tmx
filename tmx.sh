@@ -25,6 +25,7 @@ Option-v          paste the tmux buffer
 Option-i/j/k/l     copy-mode cursor: up/left/down/right
                   copy/scroll shortcuts pass through when nano is active
 Ctrl-q            send Shift+Left in Codex; ordinary Ctrl-q elsewhere
+Option-t          send a literal Tab to the application
 Ctrl-b then t      send a literal Tab to the application
 Ctrl-b then o      switch between left and right panes
 Ctrl-b then d      detach; programs keep running
@@ -50,7 +51,9 @@ TMX_SOCKET=${TMX_SOCKET:-tmx}
 case $TMX_SOCKET in tmx|tmx-test-*) ;; *) die 'unsupported TMX_SOCKET' ;; esac
 case $TMX_SOCKET in *[!a-zA-Z0-9_-]*) die 'invalid socket name' ;; esac
 export TMX_LAUNCHER TMX_SOCKET
-mux() { command tmux -L "$TMX_SOCKET" -f "$directory/.generated/tmux.conf" "$@" 9>&-; }
+# iSH uses UTF-8 even when Alpine has no locale variables configured. Without
+# -u, tmux on musl may replace newlines in registry snapshots with underscores.
+mux() { command tmux -u -L "$TMX_SOCKET" -f "$directory/.generated/tmux.conf" "$@" 9>&-; }
 
 # Restore appearance for the saved mode after reattach/config reload. This does
 # not select a layout, swap terminals or start/restart status workers.
@@ -59,8 +62,10 @@ apply_orientation() {
         mux set-option -t '=tmx:' status-position bottom \; \
             set-option -t '=tmx:' 'status-format[0]' '#{E:@tmx_footer}' \; \
             set-option -w -t "$main" pane-border-status top \; \
-            set-option -w -t "$main" pane-border-format '#{E:@tmx_vertical_header}' \; \
-            set-option -w -t "$main" pane-border-lines spaces
+            set-option -w -t "$main" pane-border-format '#{E:@tmx_vertical_header}'
+        # Some Alpine tmux packages predate the optional "spaces" border style.
+        mux set-option -w -t "$main" pane-border-lines spaces 2>/dev/null ||
+            mux set-option -w -t "$main" pane-border-lines single
     else
         mux set-option -t '=tmx:' status-position top \; \
             set-option -t '=tmx:' 'status-format[0]' '#{E:@tmx_horizontal_header}' \; \
@@ -775,5 +780,5 @@ exec 9>&-
 
 if [ "$action" = attach ] && [ "$inside" = no ]; then
     # Move the session to this client; do not leave a stale phone client in charge.
-    exec tmux -L "$TMX_SOCKET" -f "$directory/.generated/tmux.conf" attach-session -d -t '=tmx'
+    exec tmux -u -L "$TMX_SOCKET" -f "$directory/.generated/tmux.conf" attach-session -d -t '=tmx'
 fi
